@@ -3199,11 +3199,24 @@ void UCookOnTheFlyServer::QueueDiscoveredPackageOnDirector(UE::Cook::FPackageDat
 		}
 	}
 
-	if (!CookByTheBookOptions->bSkipHardReferences ||
-		(Instigator.Category == EInstigator::GeneratedPackage))
-	{
-		PackageData.QueueAsDiscovered(MoveTemp(Instigator), MoveTemp(ReachablePlatforms), bUrgent);
-	}
+       if (!CookByTheBookOptions->bSkipHardReferences ||
+               (Instigator.Category == EInstigator::GeneratedPackage))
+       {
+               const FString FilePath = PackageData.GetFileName().ToString();
+               if (FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
+                       FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
+                       FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase))
+               {
+                       AddWhitelistedPackage(PackageData.GetPackageName(), UE::Cook::FWorkerId::Local());
+               }
+
+               UE::Cook::FWorkerId WhitelistWorker = GetWhitelistedWorker(PackageData.GetPackageName());
+               if (WhitelistWorker.IsValid())
+               {
+                       PackageData.SetWorkerAssignmentConstraint(WhitelistWorker);
+               }
+               PackageData.QueueAsDiscovered(MoveTemp(Instigator), MoveTemp(ReachablePlatforms), bUrgent);
+       }
 }
 
 void UCookOnTheFlyServer::OnRemoveSessionPlatform(const ITargetPlatform* TargetPlatform, int32 RemovedIndex)
@@ -12126,7 +12139,21 @@ void FEDLMPCollector::ServerReceiveMessage(FMPCollectorServerMessageContext& Con
 
 bool UCookOnTheFlyServer::ShouldVerifyEDLCookInfo() const
 {
-	return CookByTheBookOptions->DlcName.IsEmpty() && !bCookFilter;
+        return CookByTheBookOptions->DlcName.IsEmpty() && !bCookFilter;
+}
+
+void UCookOnTheFlyServer::AddWhitelistedPackage(const FName& PackageName, UE::Cook::FWorkerId WorkerId)
+{
+       WhitelistedPackages.Add(PackageName, WorkerId);
+}
+
+UE::Cook::FWorkerId UCookOnTheFlyServer::GetWhitelistedWorker(const FName& PackageName) const
+{
+       if (const UE::Cook::FWorkerId* Found = WhitelistedPackages.Find(PackageName))
+       {
+               return *Found;
+       }
+       return UE::Cook::FWorkerId::Invalid();
 }
 
 void UCookOnTheFlyServer::BeginCookEDLCookInfo(FBeginCookContext& BeginContext)

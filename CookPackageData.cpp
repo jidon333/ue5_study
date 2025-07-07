@@ -2907,10 +2907,11 @@ FPackageData& FPackageDatas::CreatePackageData(FName PackageName, FName FileName
 	// If no other CreatePackageData added the PackageName, then they should not have added
 	// the FileName either
 	check(!ExistingByFileName);
-	FPackageData* PackageData = Allocator.NewElement(*this, PackageName, FileName);
-	ExistingByPackageName = PackageData;
-	ExistingByFileName = PackageData;
-	return *PackageData;
+       FPackageData* PackageData = Allocator.NewElement(*this, PackageName, FileName);
+       ExistingByPackageName = PackageData;
+       ExistingByFileName = PackageData;
+
+       return *PackageData;
 }
 
 FPackageData& FPackageDatas::AddPackageDataByFileNameChecked(const FName& FileName)
