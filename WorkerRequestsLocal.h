@@ -23,8 +23,8 @@ struct FPackageData;
 class FWorkerRequestsLocal : public IWorkerRequests
 {
 public:
-       explicit FWorkerRequestsLocal(UCookOnTheFlyServer& InCOTFS);
-       virtual bool HasExternalRequests() const override;
+	explicit FWorkerRequestsLocal(UCookOnTheFlyServer& InCOTFS);
+	virtual bool HasExternalRequests() const override;
 	virtual int32 GetNumExternalRequests() const override;
 	virtual EExternalRequestType DequeueNextCluster(TArray<FSchedulerCallback>& OutCallbacks,
 		TArray<FFilePlatformRequest>& OutBuildRequests) override;
@@ -55,7 +55,8 @@ public:
 	virtual void LogAllRequestedFiles() override;
 
 private:
-       UCookOnTheFlyServer* COTFS = nullptr;
-       FExternalRequests ExternalRequests;
+	FExternalRequests ExternalRequests;
+	UCookOnTheFlyServer* COTFS = nullptr;
 };
-}
+
+}

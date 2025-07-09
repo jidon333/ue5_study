@@ -8,6 +8,7 @@
 #include "HAL/PlatformProcess.h"
 #include "Templates/UniquePtr.h"
 #include "Templates/UnrealTemplate.h"
+#include "CookPackageData.h"
 
 class FConfigFile;
 class ITargetPlatform;
@@ -18,7 +19,7 @@ struct FInstigator;
 struct FPackageData;
 
 FWorkerRequestsLocal::FWorkerRequestsLocal(UCookOnTheFlyServer& InCOTFS)
-       : COTFS(&InCOTFS)
+	: COTFS(&InCOTFS)
 {
 }
 
@@ -55,20 +56,41 @@ void FWorkerRequestsLocal::QueueDiscoveredPackage(UCookOnTheFlyServer& COTFS, FP
 
 void FWorkerRequestsLocal::AddStartCookByTheBookRequest(FFilePlatformRequest&& Request)
 {
-       FString FilePath = Request.GetFilename();
-       bool bIsWwiseFile = FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
-               FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
-               FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
-       if (bIsWwiseFile)
-       {
-               if (COTFS)
-               {
-                       COTFS->AddWhitelistedPackage(Request.GetFilename(), UE::Cook::FWorkerId::Local());
-               }
-               Request.SetWorkerAssignmentConstraint(UE::Cook::FWorkerId::Local());
-       }
-       ExternalRequests.EnqueueUnique(MoveTemp(Request));
+	const FString FilePath = Request.GetFilename().ToString();
+	const bool bIsWwiseFile =
+		FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
+		FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
+		FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
+
+	if (bIsWwiseFile && COTFS)
+	{
+		if (COTFS->PackageDatas)
+		{
+			if (UE::Cook::FPackageData* PackageData = COTFS->PackageDatas->TryAddPackageDataByFileName(Request.GetFilename()))
+			{
+				COTFS->AddWhitelistedPackage(PackageData->GetPackageName(), UE::Cook::FWorkerId::Local());
+
+				PackageData->SetWorkerAssignmentConstraint(
+					UE::Cook::FWorkerId::Local());
+
+				// 패키지 강제 생성 및 로컬 고정 알림
+				UE_LOG(LogCook, Display,
+					TEXT("[AddStartCookByTheBookRequest] Wwise package pre-created & locked to LocalWorker: %s  (Path: %s)"),
+					*PackageData->GetPackageName().ToString(), *FilePath);
+			}
+			else
+			{
+				// 만약 패키지가 이미 존재했거나 생성 실패 시 참고용 로그
+				UE_LOG(LogCook, Display,
+					TEXT("[AddStartCookByTheBookRequest] Wwise package already tracked or failed to create: %s"),
+					*FilePath);
+			}
+		}
+	}
+
+	ExternalRequests.EnqueueUnique(MoveTemp(Request));
 }
+
 
 void FWorkerRequestsLocal::InitializeCookOnTheFly()
 {
@@ -154,4 +176,5 @@ void FWorkerRequestsLocal::LogAllRequestedFiles()
 {
 	ExternalRequests.LogAllRequestedFiles();
 }
-}
+
+}

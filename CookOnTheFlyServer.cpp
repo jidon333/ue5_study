@@ -3187,23 +3187,25 @@ void UCookOnTheFlyServer::QueueDiscoveredPackageOnDirector(UE::Cook::FPackageDat
 {
 	using namespace UE::Cook;
 
-        const FString FilePath = PackageData.GetFileName().ToString();
-       UE_LOG(LogCook, Verbose, TEXT("QueueDiscoveredPackageOnDirector: %s, Instigator=%s"),
-               *PackageData.GetPackageName().ToString(), *Instigator.ToString());
-        bool bIsWwiseFile = FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
-                                                FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
-                                                FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
+
+	const FString FilePath = PackageData.GetFileName().ToString();
+	bool bIsWwiseFile = FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
+						FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
+						FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
+
+	UE_LOG(LogCook, Display, TEXT("[QueueDiscoveredPackageOnDirector] package locked to LocalWorker: %s  (Path: %s), Instigator=%s"),
+		*PackageData.GetPackageName().ToString(), *FilePath, *Instigator.ToString());
+
 	if (bIsWwiseFile)
 	{
 		AddWhitelistedPackage(PackageData.GetPackageName(), UE::Cook::FWorkerId::Local());
 		PackageData.SetWorkerAssignmentConstraint(UE::Cook::FWorkerId::Local());
 
-		UE_LOG(LogCook, Display, TEXT("Wwise package locked to LocalWorker: %s  (Path: %s)"),
-			*PackageData.GetPackageName().ToString(), *FilePath);
-
+		UE_LOG(LogCook, Display, TEXT("[QueueDiscoveredPackageOnDirector] SetWorkerAssignmentConstraint to LocalWorker: %s  (Path: %s), Instigator=%s"),
+			*PackageData.GetPackageName().ToString(), *FilePath, *Instigator.ToString());
 
 		UE_CLOG(CookDirector == nullptr, LogCook, Warning,
-			TEXT("[CookWorker] Unexpected Wwise package assignment seen in Worker! "
+			TEXT("[QueueDiscoveredPackageOnDirector] Unexpected Wwise package assignment seen in Worker! "
 				"Pkg=%s  Path=%s  — please verify scheduling."),
 			*PackageData.GetPackageName().ToString(), *FilePath);
 
@@ -3228,6 +3230,8 @@ void UCookOnTheFlyServer::QueueDiscoveredPackageOnDirector(UE::Cook::FPackageDat
 		if (WhitelistWorker.IsValid())
 		{
 			PackageData.SetWorkerAssignmentConstraint(WhitelistWorker);
+			UE_LOG(LogCook, Display, TEXT("[QueueDiscoveredPackageOnDirector] SetWorkerAssignmentConstraint to WhitelistWorker: %s  (Path: %s), Instigator=%s"),
+				*PackageData.GetPackageName().ToString(), *FilePath, *Instigator.ToString());
 		}
 		PackageData.QueueAsDiscovered(MoveTemp(Instigator), MoveTemp(ReachablePlatforms), bUrgent);
 	}
@@ -6885,10 +6889,10 @@ void UCookOnTheFlyServer::Initialize( ECookMode::Type DesiredCookMode, ECookInit
 	AssetRegistry = IAssetRegistry::Get();
 	CachedDependencies = MakeUnique<UE::Cook::FCachedDependencies>();
 
-       if (!IsCookWorkerMode())
-       {
-               WorkerRequests.Reset(new UE::Cook::FWorkerRequestsLocal(*this));
-       }
+	if (!IsCookWorkerMode())
+	{
+		WorkerRequests.Reset(new UE::Cook::FWorkerRequestsLocal(*this));
+	}
 	else
 	{
 		check(WorkerRequests); // Caller should have constructed
