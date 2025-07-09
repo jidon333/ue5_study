@@ -3447,9 +3447,24 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::QueueGeneratedPackages(UE::Cook::FGen
 }
 
 UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook::FGeneratorPackage& Generator,
-	UE::Cook::FPackageData& PackageData, UE::Cook::FCookerTimer& Timer, bool bPrecaching)
+        UE::Cook::FPackageData& PackageData, UE::Cook::FCookerTimer& Timer, bool bPrecaching)
 {
-	using namespace UE::Cook;
+        using namespace UE::Cook;
+
+#if OUTPUT_COOKTIMING
+       UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage);
+#endif
+
+       double ScopeDuration = 0.0;
+       FScopedDurationTimer ScopeTimer(ScopeDuration);
+       FOnScopeExit LogDuration([&]()
+       {
+               if (GPrepareSaveWarningTime > 0.0f && ScopeDuration > GPrepareSaveWarningTime)
+               {
+                       UE_LOG(LogCook, Warning, TEXT("PrepareSaveGeneratedPackage for %s took %.2f seconds"),
+                               *PackageData.GetPackageName().ToString(), ScopeDuration);
+               }
+       });
 
 	FCookGenerationInfo* InfoPtr = Generator.FindInfo(PackageData);
 	if (!InfoPtr)
@@ -3475,27 +3490,53 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook:
 	TArray<ICookPackageSplitter::FGeneratedPackageForPreSave> GeneratedPackagesForPresave;
 	if (Info.GetSaveState() <= FCookGenerationInfo::ESaveState::FinishCacheObjectsToMove)
 	{
-		if (Info.GetSaveState() <= FCookGenerationInfo::ESaveState::BeginCacheObjectsToMove)
-		{
-			EPollStatus Result = BeginCacheObjectsToMove(Generator, Info, Timer, GeneratedPackagesForPresave);
-			if (Result != EPollStatus::Success)
-			{
-				return Result;
-			}
-			Info.SetSaveStateComplete(FCookGenerationInfo::ESaveState::BeginCacheObjectsToMove);
-		}
+               if (Info.GetSaveState() <= FCookGenerationInfo::ESaveState::BeginCacheObjectsToMove)
+               {
+#if OUTPUT_COOKTIMING
+                       UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage_BeginCacheObjectsToMove);
+#endif
+                       double StepDuration = 0.0;
+                       FScopedDurationTimer StepTimer(StepDuration);
+                       EPollStatus Result = BeginCacheObjectsToMove(Generator, Info, Timer, GeneratedPackagesForPresave);
+                       FOnScopeExit LogStep([&]()
+                       {
+                               if (GPrepareSaveWarningTime > 0.0f && StepDuration > GPrepareSaveWarningTime)
+                               {
+                                       UE_LOG(LogCook, Warning, TEXT("BeginCacheObjectsToMove for %s took %.2f seconds"),
+                                               *PackageData.GetPackageName().ToString(), StepDuration);
+                               }
+                       });
+                       if (Result != EPollStatus::Success)
+                       {
+                               return Result;
+                       }
+                       Info.SetSaveStateComplete(FCookGenerationInfo::ESaveState::BeginCacheObjectsToMove);
+               }
 		check(Info.GetSaveState() <= FCookGenerationInfo::ESaveState::FinishCacheObjectsToMove);
 		if (PackageData.GetNumPendingCookedPlatformData() > 0)
 		{
 			return EPollStatus::Incomplete;
 		}
-		bool bFoundNewObjects;
-		EPollStatus Result = Info.RefreshPackageObjects(Generator, PackageData.GetPackage(), bFoundNewObjects,
-			FCookGenerationInfo::ESaveState::BeginCacheObjectsToMove);
-		if (Result != EPollStatus::Success)
-		{
-			return Result;
-		}
+               bool bFoundNewObjects;
+#if OUTPUT_COOKTIMING
+               UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage_RefreshObjectsToMove);
+#endif
+               double StepDuration = 0.0;
+               FScopedDurationTimer StepTimer(StepDuration);
+               EPollStatus Result = Info.RefreshPackageObjects(Generator, PackageData.GetPackage(), bFoundNewObjects,
+                       FCookGenerationInfo::ESaveState::BeginCacheObjectsToMove);
+               FOnScopeExit LogStep([&]()
+               {
+                       if (GPrepareSaveWarningTime > 0.0f && StepDuration > GPrepareSaveWarningTime)
+                       {
+                               UE_LOG(LogCook, Warning, TEXT("RefreshPackageObjects (ObjectsToMove) for %s took %.2f seconds"),
+                                       *PackageData.GetPackageName().ToString(), StepDuration);
+                       }
+               });
+               if (Result != EPollStatus::Success)
+               {
+                       return Result;
+               }
 		if (bFoundNewObjects)
 		{
 			// Call this function recursively to reexecute CallBeginCacheOnObjects in BeginCacheObjectsToMove.
@@ -3515,45 +3556,84 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook:
 			return EPollStatus::Incomplete;
 		}
 
-		EPollStatus Result;
-		if (Info.IsGenerator())
-		{
-			Result = PreSaveGeneratorPackage(PackageData, Generator, Info, GeneratedPackagesForPresave);
-		}
-		else
-		{
-			Result = TryPopulateGeneratedPackage(Generator, Info);
-		}
-		if (Result != EPollStatus::Success)
-		{
-			return Result;
-		}
+               EPollStatus Result;
+#if OUTPUT_COOKTIMING
+               UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage_CallPopulate);
+#endif
+               double StepDuration = 0.0;
+               FScopedDurationTimer StepTimer(StepDuration);
+               if (Info.IsGenerator())
+               {
+                       Result = PreSaveGeneratorPackage(PackageData, Generator, Info, GeneratedPackagesForPresave);
+               }
+               else
+               {
+                       Result = TryPopulateGeneratedPackage(Generator, Info);
+               }
+               FOnScopeExit LogStep([&]()
+               {
+                       if (GPrepareSaveWarningTime > 0.0f && StepDuration > GPrepareSaveWarningTime)
+                       {
+                               UE_LOG(LogCook, Warning, TEXT("CallPopulate for %s took %.2f seconds"),
+                                       *PackageData.GetPackageName().ToString(), StepDuration);
+                       }
+               });
+               if (Result != EPollStatus::Success)
+               {
+                       return Result;
+               }
 		Info.SetSaveStateComplete(FCookGenerationInfo::ESaveState::CallPopulate);
 	}
 
 	if (Info.GetSaveState() <= FCookGenerationInfo::ESaveState::FinishCachePostMove)
 	{
-		if (Info.GetSaveState() <= FCookGenerationInfo::ESaveState::BeginCachePostMove)
-		{
-			EPollStatus Result = BeginCachePostMove(Generator, Info, Timer);
-			if (Result != EPollStatus::Success)
-			{
-				return Result;
-			}
-			Info.SetSaveStateComplete(FCookGenerationInfo::ESaveState::BeginCachePostMove);
-		}
+               if (Info.GetSaveState() <= FCookGenerationInfo::ESaveState::BeginCachePostMove)
+               {
+#if OUTPUT_COOKTIMING
+                       UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage_BeginCachePostMove);
+#endif
+                       double StepDuration = 0.0;
+                       FScopedDurationTimer StepTimer(StepDuration);
+                       EPollStatus Result = BeginCachePostMove(Generator, Info, Timer);
+                       FOnScopeExit LogStep([&]()
+                       {
+                               if (GPrepareSaveWarningTime > 0.0f && StepDuration > GPrepareSaveWarningTime)
+                               {
+                                       UE_LOG(LogCook, Warning, TEXT("BeginCachePostMove for %s took %.2f seconds"),
+                                               *PackageData.GetPackageName().ToString(), StepDuration);
+                               }
+                       });
+                       if (Result != EPollStatus::Success)
+                       {
+                               return Result;
+                       }
+                       Info.SetSaveStateComplete(FCookGenerationInfo::ESaveState::BeginCachePostMove);
+               }
 		check(Info.GetSaveState() <= FCookGenerationInfo::ESaveState::FinishCachePostMove);
 		if (PackageData.GetNumPendingCookedPlatformData() > 0)
 		{
 			return EPollStatus::Incomplete;
 		}
-		bool bFoundNewObjects;
-		EPollStatus Result = Info.RefreshPackageObjects(Generator, PackageData.GetPackage(), bFoundNewObjects,
-			FCookGenerationInfo::ESaveState::BeginCachePostMove);
-		if (Result != EPollStatus::Success)
-		{
-			return Result;
-		}
+               bool bFoundNewObjects;
+#if OUTPUT_COOKTIMING
+               UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage_RefreshPostMove);
+#endif
+               double StepDuration = 0.0;
+               FScopedDurationTimer StepTimer(StepDuration);
+               EPollStatus Result = Info.RefreshPackageObjects(Generator, PackageData.GetPackage(), bFoundNewObjects,
+                       FCookGenerationInfo::ESaveState::BeginCachePostMove);
+               FOnScopeExit LogStep([&]()
+               {
+                       if (GPrepareSaveWarningTime > 0.0f && StepDuration > GPrepareSaveWarningTime)
+                       {
+                               UE_LOG(LogCook, Warning, TEXT("RefreshPackageObjects (PostMove) for %s took %.2f seconds"),
+                                       *PackageData.GetPackageName().ToString(), StepDuration);
+                       }
+               });
+               if (Result != EPollStatus::Success)
+               {
+                       return Result;
+               }
 		if (bFoundNewObjects)
 		{
 			// Call this function recursively to reexecute CallBeginCacheOnObjects in BeginCachePostMove
