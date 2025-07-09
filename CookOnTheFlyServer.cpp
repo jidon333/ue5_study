@@ -3187,10 +3187,12 @@ void UCookOnTheFlyServer::QueueDiscoveredPackageOnDirector(UE::Cook::FPackageDat
 {
 	using namespace UE::Cook;
 
-	const FString FilePath = PackageData.GetFileName().ToString();
-	bool bIsWwiseFile = FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
-						FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
-						FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
+        const FString FilePath = PackageData.GetFileName().ToString();
+       UE_LOG(LogCook, Verbose, TEXT("QueueDiscoveredPackageOnDirector: %s, Instigator=%s"),
+               *PackageData.GetPackageName().ToString(), *Instigator.ToString());
+        bool bIsWwiseFile = FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
+                                                FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
+                                                FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
 	if (bIsWwiseFile)
 	{
 		AddWhitelistedPackage(PackageData.GetPackageName(), UE::Cook::FWorkerId::Local());
