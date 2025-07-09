@@ -3187,6 +3187,26 @@ void UCookOnTheFlyServer::QueueDiscoveredPackageOnDirector(UE::Cook::FPackageDat
 {
 	using namespace UE::Cook;
 
+	const FString FilePath = PackageData.GetFileName().ToString();
+	bool bIsWwiseFile = FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
+						FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
+						FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
+	if (bIsWwiseFile)
+	{
+		AddWhitelistedPackage(PackageData.GetPackageName(), UE::Cook::FWorkerId::Local());
+		PackageData.SetWorkerAssignmentConstraint(UE::Cook::FWorkerId::Local());
+
+		UE_LOG(LogCook, Display, TEXT("Wwise package locked to LocalWorker: %s  (Path: %s)"),
+			*PackageData.GetPackageName().ToString(), *FilePath);
+
+
+		UE_CLOG(CookDirector == nullptr, LogCook, Warning,
+			TEXT("[CookWorker] Unexpected Wwise package assignment seen in Worker! "
+				"Pkg=%s  Path=%s  — please verify scheduling."),
+			*PackageData.GetPackageName().ToString(), *FilePath);
+
+	}
+
 	if (CookOnTheFlyRequestManager)
 	{
 		if (PackageData.IsGenerated())
@@ -3202,14 +3222,6 @@ void UCookOnTheFlyServer::QueueDiscoveredPackageOnDirector(UE::Cook::FPackageDat
 	if (!CookByTheBookOptions->bSkipHardReferences ||
 		(Instigator.Category == EInstigator::GeneratedPackage))
 	{
-		const FString FilePath = PackageData.GetFileName().ToString();
-		if (FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
-			FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
-			FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase))
-		{
-			AddWhitelistedPackage(PackageData.GetPackageName(), UE::Cook::FWorkerId::Local());
-		}
-
 		UE::Cook::FWorkerId WhitelistWorker = GetWhitelistedWorker(PackageData.GetPackageName());
 		if (WhitelistWorker.IsValid())
 		{
@@ -3519,6 +3531,7 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook:
 		{
 			return EPollStatus::Incomplete;
 		}
+
 		bool bFoundNewObjects;
 		EPollStatus Result = Info.RefreshPackageObjects(Generator, PackageData.GetPackage(), bFoundNewObjects,
 			FCookGenerationInfo::ESaveState::BeginCacheObjectsToMove);
@@ -3548,10 +3561,16 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook:
 		EPollStatus Result;
 		if (Info.IsGenerator())
 		{
+#if OUTPUT_COOKTIMING
+			UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage_PreSaveGeneratorPackage);
+#endif
 			Result = PreSaveGeneratorPackage(PackageData, Generator, Info, GeneratedPackagesForPresave);
 		}
 		else
 		{
+#if OUTPUT_COOKTIMING
+			UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage_TryPopulateGeneratedPackage);
+#endif
 			Result = TryPopulateGeneratedPackage(Generator, Info);
 		}
 		if (Result != EPollStatus::Success)
@@ -3565,6 +3584,9 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook:
 	{
 		if (Info.GetSaveState() <= FCookGenerationInfo::ESaveState::BeginCachePostMove)
 		{
+#if OUTPUT_COOKTIMING
+			UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage_BeginCachePostMove);
+#endif
 			EPollStatus Result = BeginCachePostMove(Generator, Info, Timer);
 			if (Result != EPollStatus::Success)
 			{
@@ -3668,6 +3690,10 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PreSaveGeneratorPackage(UE::Cook::FPa
 {
 	using namespace UE::Cook;
 
+#if OUTPUT_COOKTIMING
+	UE_SCOPED_HIERARCHICAL_COOKTIMER(PreSaveGeneratorPackage);
+#endif
+
 	UPackage* Package = PackageData.GetPackage();
 	ICookPackageSplitter* Splitter = Generator.GetCookPackageSplitterInstance();
 	UObject* SplitDataObject = Generator.FindSplitDataObject();
@@ -3734,6 +3760,10 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::BeginCachePostMove(UE::Cook::FGenerat
 	UE::Cook::FCookGenerationInfo& Info, UE::Cook::FCookerTimer& Timer)
 {
 	using namespace UE::Cook;
+
+#if OUTPUT_COOKTIMING
+	UE_SCOPED_HIERARCHICAL_COOKTIMER(BeginCachePostMove);
+#endif
 
 	check(Info.PackageData); // Caller has validated
 	UE::Cook::FPackageData& PackageData(*Info.PackageData);
@@ -3841,6 +3871,11 @@ UPackage* UCookOnTheFlyServer::TryCreateGeneratedPackage(UE::Cook::FGeneratorPac
 UE::Cook::EPollStatus UCookOnTheFlyServer::TryPopulateGeneratedPackage(UE::Cook::FGeneratorPackage& Generator,
 	UE::Cook::FCookGenerationInfo& GeneratedInfo)
 {
+
+#if OUTPUT_COOKTIMING
+	UE_SCOPED_HIERARCHICAL_COOKTIMER(TryPopulateGeneratedPackage);
+#endif
+
 	using namespace UE::Cook;
 
 	UPackage* OwnerPackage = Generator.GetOwnerPackage();
@@ -7582,6 +7617,22 @@ void UCookOnTheFlyServer::DumpStats()
 
 	OutputHierarchyTimers();
 
+#if PROFILE_NETWORK
+	UE_LOG(LogCook, Display, TEXT("Network Stats \n"
+		"TimeTillRequestStarted %f\n"
+		"TimeTillRequestForfilled %f\n"
+		"TimeTillRequestForfilledError %f\n"
+		"WaitForAsyncFilesWrites %f\n"),
+		TimeTillRequestStarted,
+		TimeTillRequestForfilled,
+		TimeTillRequestForfilledError,
+
+		WaitForAsyncFilesWrites);
+#endif
+}
+
+UNREALED_API void UCookOnTheFlyServer::LogPrepareSaveGeneratedPackageTimes()
+{
 
 #if OUTPUT_COOKTIMING
 	if (GPrepareSaveGeneratedPackageTimes.Num() > 0)
@@ -7598,21 +7649,8 @@ void UCookOnTheFlyServer::DumpStats()
 		for (const TPair<FName, double>& Pair : PackageTimes)
 		{
 			UE_LOG(LogCook, Display, TEXT("  %s: %.3fs"), *Pair.Key.ToString(), Pair.Value);
-		}
+	}
 }
-#endif
-
-#if PROFILE_NETWORK
-	UE_LOG(LogCook, Display, TEXT("Network Stats \n"
-		"TimeTillRequestStarted %f\n"
-		"TimeTillRequestForfilled %f\n"
-		"TimeTillRequestForfilledError %f\n"
-		"WaitForAsyncFilesWrites %f\n"),
-		TimeTillRequestStarted,
-		TimeTillRequestForfilled,
-		TimeTillRequestForfilledError,
-
-		WaitForAsyncFilesWrites);
 #endif
 }
 
@@ -10310,6 +10348,8 @@ void UCookOnTheFlyServer::CookByTheBookFinished()
 
 	ShutdownCookSession();
 	BroadcastCookByTheBookFinished();
+	LogPrepareSaveGeneratedPackageTimes();
+
 	UE_LOG(LogCook, Display, TEXT("Done!"));
 }
 

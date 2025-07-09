@@ -6,7 +6,6 @@
 #include "Containers/RingBuffer.h"
 #include "CookOnTheSide/CookLog.h"
 #include "CookPackageSplitter.h"
-#include "CookTypes.h"
 #include "HAL/PlatformMemory.h"
 #include "INetworkFileSystemModule.h"
 #include "Logging/LogMacros.h"
@@ -24,6 +23,7 @@
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/WeakObjectPtr.h"
+#include "Cooker/MPCollector.h"
 
 #include "CookOnTheFlyServer.generated.h"
 
@@ -423,18 +423,29 @@ private:
 	/** List of filenames that may be out of date in the asset registry */
 	TSet<FName> ModifiedAssetFilenames;
 
+
+	//// 쿠킹 우회 작업 /// 
+
+	/** Mapping of whitelisted packages to the worker that should cook them */
+	TMap<FName, UE::Cook::FWorkerId> WhitelistedPackages;
+
+	/** Add a package name to the whitelist with the worker that must cook it. */
+	void AddWhitelistedPackage(const FName& PackageName, UE::Cook::FWorkerId WorkerId);
+	/** Return the worker assigned to a whitelisted package, or Invalid if not whitelisted. */
+	UE::Cook::FWorkerId GetWhitelistedWorker(const FName& PackageName) const;
+
+
+
 	//////////////////////////////////////////////////////////////////////////
 	// iterative ini settings checking
 	// growing list of ini settings which are accessed over the course of the cook
 
 	mutable FCriticalSection ConfigFileCS;
-       mutable UE::Cook::FIniSettingContainer AccessedIniStrings;
-       TArray<const FConfigFile*> OpenConfigFiles;
-       TArray<FString> ConfigSettingDenyList;
-       /** Mapping of whitelisted packages to the worker that should cook them */
-       TMap<FName, UE::Cook::FWorkerId> WhitelistedPackages;
-       void OnFConfigDeleted(const FConfigFile* Config);
-       void OnFConfigCreated(const FConfigFile* Config);
+	mutable UE::Cook::FIniSettingContainer AccessedIniStrings;
+	TArray<const FConfigFile*> OpenConfigFiles;
+	TArray<FString> ConfigSettingDenyList;
+	void OnFConfigDeleted(const FConfigFile* Config);
+	void OnFConfigCreated(const FConfigFile* Config);
 
 	void ProcessAccessedIniSettings(const FConfigFile* Config, UE::Cook::FIniSettingContainer& AccessedIniStrings) const;
 
@@ -639,6 +650,9 @@ public:
 
 	/** Dumps cooking stats to the log. Run from the exec command "Cook stats". */
 	UNREALED_API void DumpStats();
+
+	/** Log time spent in PrepareSaveGeneratedPackage per package */
+	UNREALED_API void LogPrepareSaveGeneratedPackageTimes();
 
 	/** Initialize *this so that either CookOnTheFly or CookByTheBook can be started and ticked */
 	UNREALED_API void Initialize( ECookMode::Type DesiredCookMode, ECookInitializationFlags InCookInitializationFlags,
@@ -890,16 +904,11 @@ public:
 	/** Print detailed stats from the cook. */
 	UNREALED_API void PrintDetailedCookStats();
 
-        /** Is the local CookOnTheFlyServer cooking a DLC plugin rather than a Project+Engine+EmbeddedPlugins? */
-        UNREALED_API bool IsCookingDLC() const;
+	/** Is the local CookOnTheFlyServer cooking a DLC plugin rather than a Project+Engine+EmbeddedPlugins? */
+	UNREALED_API bool IsCookingDLC() const;
 
-        /** Return whether EDLCookInfo verification has NOT been rendered useless by settings such as CookFilter. */
-        UNREALED_API bool ShouldVerifyEDLCookInfo() const;
-
-       /** Add a package name to the whitelist with the worker that must cook it. */
-       void AddWhitelistedPackage(const FName& PackageName, UE::Cook::FWorkerId WorkerId);
-       /** Return the worker assigned to a whitelisted package, or Invalid if not whitelisted. */
-       UE::Cook::FWorkerId GetWhitelistedWorker(const FName& PackageName) const;
+	/** Return whether EDLCookInfo verification has NOT been rendered useless by settings such as CookFilter. */
+	UNREALED_API bool ShouldVerifyEDLCookInfo() const;
 
 protected:
 	// FExec interface used in the editor
