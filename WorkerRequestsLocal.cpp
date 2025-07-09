@@ -65,7 +65,6 @@ void FWorkerRequestsLocal::AddStartCookByTheBookRequest(FFilePlatformRequest&& R
                {
                        COTFS->AddWhitelistedPackage(Request.GetFilename(), UE::Cook::FWorkerId::Local());
                }
-               Request.SetWorkerAssignmentConstraint(UE::Cook::FWorkerId::Local());
        }
        ExternalRequests.EnqueueUnique(MoveTemp(Request));
 }
