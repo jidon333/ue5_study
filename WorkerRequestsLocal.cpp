@@ -6,6 +6,7 @@
 #include "Cooker/CookRequests.h"
 #include "HAL/Event.h"
 #include "HAL/PlatformProcess.h"
+#include "CookPackageData.h"
 #include "Templates/UniquePtr.h"
 #include "Templates/UnrealTemplate.h"
 
@@ -59,11 +60,15 @@ void FWorkerRequestsLocal::AddStartCookByTheBookRequest(FFilePlatformRequest&& R
        bool bIsWwiseFile = FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
                FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
                FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
-       if (bIsWwiseFile)
+       if (bIsWwiseFile && COTFS)
        {
-               if (COTFS)
+               COTFS->AddWhitelistedPackage(Request.GetFilename(), UE::Cook::FWorkerId::Local());
+               if (COTFS->PackageDatas)
                {
-                       COTFS->AddWhitelistedPackage(Request.GetFilename(), UE::Cook::FWorkerId::Local());
+                       if (UE::Cook::FPackageData* PackageData = COTFS->PackageDatas->TryAddPackageDataByFileName(Request.GetFilename()))
+                       {
+                               PackageData->SetWorkerAssignmentConstraint(UE::Cook::FWorkerId::Local());
+                       }
                }
        }
        ExternalRequests.EnqueueUnique(MoveTemp(Request));
