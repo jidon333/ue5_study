@@ -3199,24 +3199,24 @@ void UCookOnTheFlyServer::QueueDiscoveredPackageOnDirector(UE::Cook::FPackageDat
 		}
 	}
 
-       if (!CookByTheBookOptions->bSkipHardReferences ||
-               (Instigator.Category == EInstigator::GeneratedPackage))
-       {
-               const FString FilePath = PackageData.GetFileName().ToString();
-               if (FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
-                       FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
-                       FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase))
-               {
-                       AddWhitelistedPackage(PackageData.GetPackageName(), UE::Cook::FWorkerId::Local());
-               }
+	if (!CookByTheBookOptions->bSkipHardReferences ||
+		(Instigator.Category == EInstigator::GeneratedPackage))
+	{
+		const FString FilePath = PackageData.GetFileName().ToString();
+		if (FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
+			FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
+			FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase))
+		{
+			AddWhitelistedPackage(PackageData.GetPackageName(), UE::Cook::FWorkerId::Local());
+		}
 
-               UE::Cook::FWorkerId WhitelistWorker = GetWhitelistedWorker(PackageData.GetPackageName());
-               if (WhitelistWorker.IsValid())
-               {
-                       PackageData.SetWorkerAssignmentConstraint(WhitelistWorker);
-               }
-               PackageData.QueueAsDiscovered(MoveTemp(Instigator), MoveTemp(ReachablePlatforms), bUrgent);
-       }
+		UE::Cook::FWorkerId WhitelistWorker = GetWhitelistedWorker(PackageData.GetPackageName());
+		if (WhitelistWorker.IsValid())
+		{
+			PackageData.SetWorkerAssignmentConstraint(WhitelistWorker);
+		}
+		PackageData.QueueAsDiscovered(MoveTemp(Instigator), MoveTemp(ReachablePlatforms), bUrgent);
+	}
 }
 
 void UCookOnTheFlyServer::OnRemoveSessionPlatform(const ITargetPlatform* TargetPlatform, int32 RemovedIndex)
@@ -3444,6 +3444,10 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook:
 {
 	using namespace UE::Cook;
 
+#if OUTPUT_COOKTIMING
+	UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage);
+#endif
+
 	FCookGenerationInfo* InfoPtr = Generator.FindInfo(PackageData);
 	if (!InfoPtr)
 	{
@@ -3455,12 +3459,13 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook:
 
 	if (Info.GetSaveState() <= FCookGenerationInfo::ESaveState::FinishCachePreMove)
 	{
-               if (PackageData.GetNumPendingCookedPlatformData() > 0)
-               {
-                       UE_LOG(LogCook, Verbose, TEXT("PrepareSave: PendingCookedPlatformData not ready for %s"),
-                               *PackageData.GetPackageName().ToString());
-                       return EPollStatus::Incomplete;
-               }
+		if (PackageData.GetNumPendingCookedPlatformData() > 0)
+		{
+			UE_LOG(LogCook, Display,
+				TEXT("PrepareSave: PendingCookedPlatformData not ready for %s"),
+				*PackageData.GetPackageName().ToString());
+			return EPollStatus::Incomplete;
+		}
 		Info.SetSaveStateComplete(FCookGenerationInfo::ESaveState::FinishCachePreMove);
 	}
 
@@ -3470,6 +3475,9 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook:
 	{
 		if (Info.GetSaveState() <= FCookGenerationInfo::ESaveState::BeginCacheObjectsToMove)
 		{
+#if OUTPUT_COOKTIMING
+			UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage_BeginCacheObjectsToMove);
+#endif
 			EPollStatus Result = BeginCacheObjectsToMove(Generator, Info, Timer, GeneratedPackagesForPresave);
 			if (Result != EPollStatus::Success)
 			{
@@ -3897,13 +3905,15 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSave(UE::Cook::FPackageData& P
 }
 
 UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveInternal(UE::Cook::FPackageData& PackageData,
-        UE::Cook::FCookerTimer& Timer, bool bPrecaching)
+	UE::Cook::FCookerTimer& Timer, bool bPrecaching)
 {
-        using namespace UE::Cook;
+	using namespace UE::Cook;
 
 #if OUTPUT_COOKTIMING
-       UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveInternal);
+	UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveInternal);
 #endif
+
+
 #if DEBUG_COOKONTHEFLY 
 	UE_LOG(LogCook, Display, TEXT("Caching objects for package %s"), *PackageData.GetPackageName().ToString());
 #endif
@@ -3941,13 +3951,14 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveInternal(UE::Cook::FPackag
 			PackageData.SetCookedPlatformDataStarted(true);
 		}
 
-               {
+		{
 #if OUTPUT_COOKTIMING
-                       UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_CreateObjectCache);
+			UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_CreateObjectCache);
 #endif
-                       PackageData.CreateObjectCache();
-               }
 
+
+			PackageData.CreateObjectCache();
+		}
 		// Note that we cache cooked data for all requested platforms, rather than only for the requested platforms that have not cooked yet.  This allows
 		// us to avoid the complexity of needing to cancel the Save and keep track of the old list of uncooked platforms whenever the cooked platforms change
 		// while PrepareSave is active.
@@ -3956,65 +3967,67 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveInternal(UE::Cook::FPackag
 		int32& CookedPlatformDataNextIndex = PackageData.GetCookedPlatformDataNextIndex();
 		if (CookedPlatformDataNextIndex < 0)
 		{
-                       if (!BuildDefinitions->TryRemovePendingBuilds(PackageData.GetPackageName()))
-                       {
-                               // Builds are in progress; wait for them to complete
-                               UE_LOG(LogCook, Verbose, TEXT("PrepareSave: Waiting on pending builds for %s"),
-                                       *PackageData.GetPackageName().ToString());
-                               return EPollStatus::Incomplete;
-                       }
+			if (!BuildDefinitions->TryRemovePendingBuilds(PackageData.GetPackageName()))
+			{
+				// Builds are in progress; wait for them to complete
+				UE_LOG(LogCook, Display, TEXT("PrepareSave: Waiting on pending builds for %s"),
+					*PackageData.GetPackageName().ToString());
+				return EPollStatus::Incomplete;
+			}
 			CookedPlatformDataNextIndex = 0;
 		}
 
-               TArray<FCachedObjectInOuter>& CachedObjectsInOuter = PackageData.GetCachedObjectsInOuter();
-               EPollStatus Result;
-               {
-#if OUTPUT_COOKTIMING
-                       UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_BeginCacheCookedPlatformData);
-#endif
-                       Result = CallBeginCacheOnObjects(PackageData, Package, CachedObjectsInOuter,
-                               CookedPlatformDataNextIndex, Timer);
-               }
-               if (Result != EPollStatus::Success)
-               {
-                       UE_LOG(LogCook, Verbose, TEXT("PrepareSave: BeginCacheCookedPlatformData for %s returned %s"),
-                               *PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
-                       return Result;
-               }
+		TArray<FCachedObjectInOuter>& CachedObjectsInOuter = PackageData.GetCachedObjectsInOuter();
 
-               // Check for whether the Package has a Splitter and initialize its list if so
-               if (!PackageData.HasInitializedGeneratorSave())
-               {
-                       {
+
+		EPollStatus Result;
+		{
 #if OUTPUT_COOKTIMING
-                               UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_ConditionalCreateGenerator);
+			UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_BeginCacheCookedPlatformData);
 #endif
-                               Result = ConditionalCreateGeneratorPackage(PackageData, bPrecaching);
-                       }
-                       if (Result != EPollStatus::Success)
-                       {
-                               UE_LOG(LogCook, Verbose, TEXT("PrepareSave: ConditionalCreateGeneratorPackage for %s returned %s"),
-                                       *PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
-                               return Result;
-                       }
-                       PackageData.SetInitializedGeneratorSave(true);
-               }
-               Generator = PackageData.GetGeneratorPackage();
-               if (Generator)
-               {
-                       {
+			Result = CallBeginCacheOnObjects(PackageData, Package, CachedObjectsInOuter, CookedPlatformDataNextIndex, Timer);
+		}
+
+		if (Result != EPollStatus::Success)
+		{
+			UE_LOG(LogCook, Display, TEXT("PrepareSave: BeginCacheCookedPlatformData for %s returned %s"),
+				*PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
+			return Result;
+		}
+
+		// Check for whether the Package has a Splitter and initialize its list if so
+		if (!PackageData.HasInitializedGeneratorSave())
+		{
+			{
 #if OUTPUT_COOKTIMING
-                               UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_QueueGeneratedPackages);
+				UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_ConditionalCreateGenerator);
 #endif
-                               Result = QueueGeneratedPackages(*Generator, PackageData);
-                       }
-                       if (Result != EPollStatus::Success)
-                       {
-                               UE_LOG(LogCook, Verbose, TEXT("PrepareSave: QueueGeneratedPackages for %s returned %s"),
-                                       *PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
-                               return Result;
-                       }
-               }
+				Result = ConditionalCreateGeneratorPackage(PackageData, bPrecaching);
+			}
+			if (Result != EPollStatus::Success)
+			{
+				UE_LOG(LogCook, Display, TEXT("PrepareSave: ConditionalCreateGeneratorPackage for %s returned %s"),
+					*PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
+				return Result;
+			}
+			PackageData.SetInitializedGeneratorSave(true);
+		}
+		Generator = PackageData.GetGeneratorPackage();
+		if (Generator)
+		{
+			{
+#if OUTPUT_COOKTIMING
+				UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_QueueGeneratedPackages);
+#endif
+				Result = QueueGeneratedPackages(*Generator, PackageData);
+			}
+			if (Result != EPollStatus::Success)
+			{
+				UE_LOG(LogCook, Display, TEXT("PrepareSave: QueueGeneratedPackages for %s returned %s"),
+					*PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
+				return Result;
+			}
+		}
 
 		PackageData.SetCookedPlatformDataCalled(true);
 	}
@@ -4023,23 +4036,23 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveInternal(UE::Cook::FPackag
 		Generator = PackageData.GetGeneratorPackage();
 	}
 
-               if (Generator)
-               {
-                       EPollStatus Result;
-                       {
+	if (Generator)
+	{
+		EPollStatus Result;
+		{
 #if OUTPUT_COOKTIMING
-                               UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_PrepareSaveGeneratedPackage);
+			UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_PrepareSaveGeneratedPackage);
 #endif
-                               Result = PrepareSaveGeneratedPackage(*Generator, PackageData, Timer, bPrecaching);
-                       }
-                       if (Result != EPollStatus::Success)
-                       {
-                               UE_LOG(LogCook, Verbose, TEXT("PrepareSave: PrepareSaveGeneratedPackage for %s returned %s"),
-                                       *PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
-                               return Result;
-                       }
-               }
-               else if (PackageData.IsGenerated())
+			Result = PrepareSaveGeneratedPackage(*Generator, PackageData, Timer, bPrecaching);
+		}
+		if (Result != EPollStatus::Success)
+		{
+			UE_LOG(LogCook, Display, TEXT("PrepareSave: PrepareSaveGeneratedPackage for %s returned %s"),
+				*PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
+			return Result;
+		}
+	}
+	else if (PackageData.IsGenerated())
 	{
 		FGeneratorPackage* ParentGenerator = PackageData.GetGeneratedOwner();
 		if (!ParentGenerator)
@@ -4049,19 +4062,19 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveInternal(UE::Cook::FPackag
 			return EPollStatus::Error;
 		}
 
-                       EPollStatus Result;
-                       {
+		EPollStatus Result;
+		{
 #if OUTPUT_COOKTIMING
-                               UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_PrepareSaveGeneratedPackage);
+			UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_PrepareSaveGeneratedPackage);
 #endif
-                               Result = PrepareSaveGeneratedPackage(*ParentGenerator, PackageData, Timer, bPrecaching);
-                       }
-                       if (Result != EPollStatus::Success)
-                       {
-                               UE_LOG(LogCook, Verbose, TEXT("PrepareSave: PrepareSaveGeneratedPackage for %s returned %s"),
-                                       *PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
-                               return Result;
-                       }
+			Result = PrepareSaveGeneratedPackage(*ParentGenerator, PackageData, Timer, bPrecaching);
+		}
+		if (Result != EPollStatus::Success)
+		{
+			UE_LOG(LogCook, Display, TEXT("PrepareSave: PrepareSaveGeneratedPackage for %s returned %s"),
+				*PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
+			return Result;
+		}
 	}
 	else
 	{
@@ -4069,20 +4082,22 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveInternal(UE::Cook::FPackag
 		{
 			return EPollStatus::Incomplete;
 		}
-               bool bFoundNewObjects;
-               EPollStatus Result;
-               {
+		bool bFoundNewObjects;
+		EPollStatus Result;
+		{
 #if OUTPUT_COOKTIMING
-                       UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_RefreshObjectCache);
+			UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_RefreshObjectCache);
 #endif
-                       Result = PackageData.RefreshObjectCache(bFoundNewObjects);
-               }
-               if (Result != EPollStatus::Success)
-               {
-                       UE_LOG(LogCook, Verbose, TEXT("PrepareSave: RefreshObjectCache for %s returned %s"),
-                               *PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
-                       return Result;
-               }
+			Result = PackageData.RefreshObjectCache(bFoundNewObjects);
+		}
+		if (Result != EPollStatus::Success)
+		{
+			UE_LOG(LogCook, Display, TEXT("PrepareSave: RefreshObjectCache for %s returned %s"),
+				*PackageData.GetPackageName().ToString(), Result == EPollStatus::Incomplete ? TEXT("Incomplete") : TEXT("Error"));
+			return Result;
+		}
+
+
 		if (bFoundNewObjects)
 		{
 			// Call this function recursively to reexecute CallBeginCacheOnObjects.
@@ -7961,6 +7976,21 @@ void UCookOnTheFlyServer::OnFConfigCreated(const FConfigFile* Config)
 	FScopeLock Lock(&ConfigFileCS);
 	OpenConfigFiles.Add(Config);
 }
+
+void UCookOnTheFlyServer::AddWhitelistedPackage(const FName& PackageName, UE::Cook::FWorkerId WorkerId)
+{
+	WhitelistedPackages.Add(PackageName, WorkerId);
+}
+
+UE::Cook::FWorkerId UCookOnTheFlyServer::GetWhitelistedWorker(const FName& PackageName) const
+{
+	if (const UE::Cook::FWorkerId* Found = WhitelistedPackages.Find(PackageName))
+	{
+		return *Found;
+	}
+	return UE::Cook::FWorkerId::Invalid();
+}
+
 
 void UCookOnTheFlyServer::OnFConfigDeleted(const FConfigFile* Config)
 {
@@ -12197,21 +12227,7 @@ void FEDLMPCollector::ServerReceiveMessage(FMPCollectorServerMessageContext& Con
 
 bool UCookOnTheFlyServer::ShouldVerifyEDLCookInfo() const
 {
-        return CookByTheBookOptions->DlcName.IsEmpty() && !bCookFilter;
-}
-
-void UCookOnTheFlyServer::AddWhitelistedPackage(const FName& PackageName, UE::Cook::FWorkerId WorkerId)
-{
-       WhitelistedPackages.Add(PackageName, WorkerId);
-}
-
-UE::Cook::FWorkerId UCookOnTheFlyServer::GetWhitelistedWorker(const FName& PackageName) const
-{
-       if (const UE::Cook::FWorkerId* Found = WhitelistedPackages.Find(PackageName))
-       {
-               return *Found;
-       }
-       return UE::Cook::FWorkerId::Invalid();
+	return CookByTheBookOptions->DlcName.IsEmpty() && !bCookFilter;
 }
 
 void UCookOnTheFlyServer::BeginCookEDLCookInfo(FBeginCookContext& BeginContext)
