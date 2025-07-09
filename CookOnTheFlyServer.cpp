@@ -3439,6 +3439,29 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::QueueGeneratedPackages(UE::Cook::FGen
 	return EPollStatus::Success;
 }
 
+
+#if OUTPUT_COOKTIMING
+UE_TRACE_EVENT_BEGIN(UE_CUSTOM_COOKTIMER_LOG, PrepareSaveGeneratedPackage, NoSync)
+UE_TRACE_EVENT_FIELD(UE::Trace::WideString, PackageName)
+UE_TRACE_EVENT_END()
+static TMap<FName, double> GPrepareSaveGeneratedPackageTimes;
+struct FPrepareSaveGeneratedPackageTimer
+{
+	FPrepareSaveGeneratedPackageTimer(FName InPackageName)
+		: PackageName(InPackageName), StartTime(FPlatformTime::Seconds())
+	{
+	}
+	~FPrepareSaveGeneratedPackageTimer()
+	{
+		double Duration = FPlatformTime::Seconds() - StartTime;
+		GPrepareSaveGeneratedPackageTimes.FindOrAdd(PackageName) += Duration;
+	}
+	FName PackageName;
+	double StartTime;
+};
+#endif //OUTPUT_COOKTIMING
+
+
 UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook::FGeneratorPackage& Generator,
 	UE::Cook::FPackageData& PackageData, UE::Cook::FCookerTimer& Timer, bool bPrecaching)
 {
@@ -3446,6 +3469,12 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveGeneratedPackage(UE::Cook:
 
 #if OUTPUT_COOKTIMING
 	UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveGeneratedPackage);
+#endif
+
+#if OUTPUT_COOKTIMING
+	UE_SCOPED_HIERARCHICAL_CUSTOM_COOKTIMER(PrepareSaveGeneratedPackage)
+		UE_ADD_CUSTOM_COOKTIMER_META(PrepareSaveGeneratedPackage, PackageName, *PackageData.GetPackageName().ToString());
+	FPrepareSaveGeneratedPackageTimer ScopedTimer(PackageData.GetPackageName());
 #endif
 
 	FCookGenerationInfo* InfoPtr = Generator.FindInfo(PackageData);
@@ -7552,6 +7581,27 @@ void UCookOnTheFlyServer::DumpStats()
 	UE_LOG(LogCook, Display, TEXT("  %s=%d"), TEXT("SavedPackage"), this->StatSavedPackageCount);
 
 	OutputHierarchyTimers();
+
+
+#if OUTPUT_COOKTIMING
+	if (GPrepareSaveGeneratedPackageTimes.Num() > 0)
+	{
+		TArray<TPair<FName, double>> PackageTimes;
+		PackageTimes.Reserve(GPrepareSaveGeneratedPackageTimes.Num());
+		for (const TPair<FName, double>& Pair : GPrepareSaveGeneratedPackageTimes)
+		{
+			PackageTimes.Add(Pair);
+		}
+		PackageTimes.Sort([](const TPair<FName, double>& A, const TPair<FName, double>& B)
+		{ return A.Value > B.Value; });
+		UE_LOG(LogCook, Display, TEXT("PrepareSaveGeneratedPackage Stats:"));
+		for (const TPair<FName, double>& Pair : PackageTimes)
+		{
+			UE_LOG(LogCook, Display, TEXT("  %s: %.3fs"), *Pair.Key.ToString(), Pair.Value);
+		}
+}
+#endif
+
 #if PROFILE_NETWORK
 	UE_LOG(LogCook, Display, TEXT("Network Stats \n"
 		"TimeTillRequestStarted %f\n"
