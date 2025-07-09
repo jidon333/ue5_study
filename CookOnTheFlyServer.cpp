@@ -210,10 +210,17 @@ static FAutoConsoleVariableRef CVarCookRetryBusyTime(
 
 float GCookProgressWarnBusyTime = 120.0f;
 static FAutoConsoleVariableRef CVarCookDisplayWarnBusyTime(
-	TEXT("Cook.display.warnbusytime"),
-	GCookProgressWarnBusyTime,
-	TEXT("Controls the time before the cooker will issue a warning that there is a deadlock in a busy queue.\n"),
-	ECVF_Default);
+        TEXT("Cook.display.warnbusytime"),
+        GCookProgressWarnBusyTime,
+        TEXT("Controls the time before the cooker will issue a warning that there is a deadlock in a busy queue.\n"),
+        ECVF_Default);
+
+float GPrepareSaveWarningTime = 0.0f;
+static FAutoConsoleVariableRef CVarPrepareSaveWarningTime(
+       TEXT("Cook.PrepareSaveWarningTime"),
+       GPrepareSaveWarningTime,
+       TEXT("Minimum time in seconds for PrepareSave operations before a warning is logged. 0 to disable."),
+       ECVF_Default);
 
 ////////////////////////////////////////////////////////////////
 /// Cook on the fly server
@@ -3904,9 +3911,20 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveInternal(UE::Cook::FPackag
 #if OUTPUT_COOKTIMING
        UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSaveInternal);
 #endif
-#if DEBUG_COOKONTHEFLY 
-	UE_LOG(LogCook, Display, TEXT("Caching objects for package %s"), *PackageData.GetPackageName().ToString());
+#if DEBUG_COOKONTHEFLY
+        UE_LOG(LogCook, Display, TEXT("Caching objects for package %s"), *PackageData.GetPackageName().ToString());
 #endif
+
+       double ScopeDuration = 0.0;
+       FScopedDurationTimer ScopeTimer(ScopeDuration);
+       FOnScopeExit LogDuration([&]()
+       {
+               if (GPrepareSaveWarningTime > 0.0f && ScopeDuration > GPrepareSaveWarningTime)
+               {
+                       UE_LOG(LogCook, Warning, TEXT("PrepareSaveInternal for %s took %.2f seconds"),
+                               *PackageData.GetPackageName().ToString(), ScopeDuration);
+               }
+       });
 	UPackage* Package = PackageData.GetPackage();
 	check(Package && Package->IsFullyLoaded());
 	check(PackageData.GetState() == EPackageState::Save);
@@ -3945,6 +3963,16 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveInternal(UE::Cook::FPackag
 #if OUTPUT_COOKTIMING
                        UE_SCOPED_HIERARCHICAL_COOKTIMER(PrepareSave_CreateObjectCache);
 #endif
+                       double StepDuration = 0.0;
+                       FScopedDurationTimer StepTimer(StepDuration);
+                       FOnScopeExit LogStep([&]()
+                       {
+                               if (GPrepareSaveWarningTime > 0.0f && StepDuration > GPrepareSaveWarningTime)
+                               {
+                                       UE_LOG(LogCook, Warning, TEXT("CreateObjectCache for %s took %.2f seconds"),
+                                               *PackageData.GetPackageName().ToString(), StepDuration);
+                               }
+                       });
                        PackageData.CreateObjectCache();
                }
 
@@ -4097,11 +4125,22 @@ UE::Cook::EPollStatus UCookOnTheFlyServer::PrepareSaveInternal(UE::Cook::FPackag
 }
 
 UE::Cook::EPollStatus UCookOnTheFlyServer::CallBeginCacheOnObjects(UE::Cook::FPackageData& PackageData,
-	UPackage* Package, TArray<UE::Cook::FCachedObjectInOuter>& Objects, int32& NextIndex, UE::Cook::FCookerTimer& Timer)
+        UPackage* Package, TArray<UE::Cook::FCachedObjectInOuter>& Objects, int32& NextIndex, UE::Cook::FCookerTimer& Timer)
 {
-	using namespace UE::Cook;
+        using namespace UE::Cook;
 
-	check(Package);
+        check(Package);
+
+       double ScopeDuration = 0.0;
+       FScopedDurationTimer ScopeTimer(ScopeDuration);
+       FOnScopeExit LogDuration([&]()
+       {
+               if (GPrepareSaveWarningTime > 0.0f && ScopeDuration > GPrepareSaveWarningTime)
+               {
+                       UE_LOG(LogCook, Warning, TEXT("CallBeginCacheOnObjects for %s took %.2f seconds"),
+                               *PackageData.GetPackageName().ToString(), ScopeDuration);
+               }
+       });
 
 	TArray<const ITargetPlatform*, TInlineAllocator<ExpectedMaxNumPlatforms>> TargetPlatforms;
 	PackageData.GetCachedObjectsInOuterPlatforms(TargetPlatforms);
