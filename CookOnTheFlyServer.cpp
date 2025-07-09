@@ -6885,10 +6885,10 @@ void UCookOnTheFlyServer::Initialize( ECookMode::Type DesiredCookMode, ECookInit
 	AssetRegistry = IAssetRegistry::Get();
 	CachedDependencies = MakeUnique<UE::Cook::FCachedDependencies>();
 
-	if (!IsCookWorkerMode())
-	{
-		WorkerRequests.Reset(new UE::Cook::FWorkerRequestsLocal());
-	}
+       if (!IsCookWorkerMode())
+       {
+               WorkerRequests.Reset(new UE::Cook::FWorkerRequestsLocal(*this));
+       }
 	else
 	{
 		check(WorkerRequests); // Caller should have constructed

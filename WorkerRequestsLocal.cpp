@@ -17,6 +17,11 @@ namespace UE::Cook
 struct FInstigator;
 struct FPackageData;
 
+FWorkerRequestsLocal::FWorkerRequestsLocal(UCookOnTheFlyServer& InCOTFS)
+       : COTFS(&InCOTFS)
+{
+}
+
 bool FWorkerRequestsLocal::HasExternalRequests() const
 {
 	return ExternalRequests.HasRequests();
@@ -50,7 +55,18 @@ void FWorkerRequestsLocal::QueueDiscoveredPackage(UCookOnTheFlyServer& COTFS, FP
 
 void FWorkerRequestsLocal::AddStartCookByTheBookRequest(FFilePlatformRequest&& Request)
 {
-	ExternalRequests.EnqueueUnique(MoveTemp(Request));
+       FString FilePath = Request.GetFilename();
+       bool bIsWwiseFile = FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
+               FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
+               FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
+       if (bIsWwiseFile)
+       {
+               if (COTFS)
+               {
+                       COTFS->AddWhitelistedPackage(Request.GetFilename(), UE::Cook::FWorkerId::Local());
+               }
+       }
+       ExternalRequests.EnqueueUnique(MoveTemp(Request));
 }
 
 void FWorkerRequestsLocal::InitializeCookOnTheFly()
@@ -137,5 +153,4 @@ void FWorkerRequestsLocal::LogAllRequestedFiles()
 {
 	ExternalRequests.LogAllRequestedFiles();
 }
-
-}
+}
