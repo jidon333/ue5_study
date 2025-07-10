@@ -64,13 +64,21 @@ FWwiseResourceCooker* FWwiseResourceCookerModule::InstantiateResourceCooker()
 }
 
 FWwiseResourceCooker* FWwiseResourceCookerModule::CreateCookerForPlatform(const ITargetPlatform* TargetPlatform,
-	const FWwiseSharedPlatformId& InPlatform, EWwiseExportDebugNameRule InExportDebugNameRule)
+        const FWwiseSharedPlatformId& InPlatform, EWwiseExportDebugNameRule InExportDebugNameRule)
 {
-	if (TargetPlatform && TargetPlatform->IsServerOnly())
-	{
-		static FString bOnce;
-		UE_CLOG(bOnce != TargetPlatform->PlatformName(), LogWwiseResourceCooker, Display, TEXT("CreateCookerForPlatform: Disabling cooker on cooking for server platform %s (UE: %s)"),
-			TargetPlatform ? *TargetPlatform->PlatformName() : TEXT("[nullptr]"),
+       if (IsCookWorkerProcess())
+       {
+               UE_LOG(LogWwiseResourceCooker, Verbose,
+                       TEXT("CreateCookerForPlatform: Running in CookWorker process for target %s."),
+                       TargetPlatform ? *TargetPlatform->IniPlatformName() : TEXT("null"));
+               return nullptr;
+       }
+
+       if (TargetPlatform && TargetPlatform->IsServerOnly())
+       {
+               static FString bOnce;
+               UE_CLOG(bOnce != TargetPlatform->PlatformName(), LogWwiseResourceCooker, Display, TEXT("CreateCookerForPlatform: Disabling cooker on cooking for server platform %s (UE: %s)"),
+                       TargetPlatform ? *TargetPlatform->PlatformName() : TEXT("[nullptr]"),
 			TargetPlatform ? *TargetPlatform->IniPlatformName() : TEXT("[nullptr]"));
 		bOnce = TargetPlatform->PlatformName();
 		return nullptr;
@@ -233,11 +241,18 @@ void FWwiseResourceCookerModule::DestroyCookerForPlatform(const ITargetPlatform*
 
 FWwiseResourceCooker* FWwiseResourceCookerModule::GetCookerForPlatform(const ITargetPlatform* TargetPlatform)
 {
-	if (TargetPlatform->IsServerOnly())
-	{
-		UE_LOG(LogWwiseResourceCooker, Verbose, TEXT("GetCookerForPlatform: Target %s is server-only."), *TargetPlatform->IniPlatformName());
-		return nullptr;
-	}
+       if (IsCookWorkerProcess())
+       {
+               UE_LOG(LogWwiseResourceCooker, Verbose,
+                       TEXT("GetCookerForPlatform: Running in CookWorker process for target %s."),
+                       TargetPlatform ? *TargetPlatform->IniPlatformName() : TEXT("null"));
+               return nullptr;
+       }
+       if (TargetPlatform->IsServerOnly())
+       {
+               UE_LOG(LogWwiseResourceCooker, Verbose, TEXT("GetCookerForPlatform: Target %s is server-only."), *TargetPlatform->IniPlatformName());
+               return nullptr;
+       }
 	auto* Result = CookingPlatforms.Find(TargetPlatform);
 	if (UNLIKELY(!Result))
 	{
