@@ -56,7 +56,7 @@ public:
 
 private:
 	FExternalRequests ExternalRequests;
-	UCookOnTheFlyServer* COTFS = nullptr;
+	UCookOnTheFlyServer* COTFS_Cached = nullptr;
 };
 
 }

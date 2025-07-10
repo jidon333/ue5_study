@@ -19,7 +19,7 @@ struct FInstigator;
 struct FPackageData;
 
 FWorkerRequestsLocal::FWorkerRequestsLocal(UCookOnTheFlyServer& InCOTFS)
-	: COTFS(&InCOTFS)
+	: COTFS_Cached(&InCOTFS)
 {
 }
 
@@ -62,13 +62,13 @@ void FWorkerRequestsLocal::AddStartCookByTheBookRequest(FFilePlatformRequest&& R
 		FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
 		FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
 
-	if (bIsWwiseFile && COTFS)
+	if (bIsWwiseFile && COTFS_Cached)
 	{
-		if (COTFS->PackageDatas)
+		if (COTFS_Cached->PackageDatas)
 		{
-			if (UE::Cook::FPackageData* PackageData = COTFS->PackageDatas->TryAddPackageDataByFileName(Request.GetFilename()))
+			if (UE::Cook::FPackageData* PackageData = COTFS_Cached->PackageDatas->TryAddPackageDataByFileName(Request.GetFilename()))
 			{
-				COTFS->AddWhitelistedPackage(PackageData->GetPackageName(), UE::Cook::FWorkerId::Local());
+				COTFS_Cached->AddWhitelistedPackage(PackageData->GetPackageName(), UE::Cook::FWorkerId::Local());
 
 				PackageData->SetWorkerAssignmentConstraint(
 					UE::Cook::FWorkerId::Local());
