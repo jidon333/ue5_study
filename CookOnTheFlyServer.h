@@ -426,13 +426,11 @@ private:
 
 	//// 쿠킹 우회 작업 /// 
 
-	/** Mapping of whitelisted packages to the worker that should cook them */
-	TMap<FName, UE::Cook::FWorkerId> WhitelistedPackages;
+/** Strings that indicate packages which must be cooked on the local worker */
+TArray<FString> LocalWorkerPackageFilters;
 
-	/** Add a package name to the whitelist with the worker that must cook it. */
-	void AddWhitelistedPackage(const FName& PackageName, UE::Cook::FWorkerId WorkerId);
-	/** Return the worker assigned to a whitelisted package, or Invalid if not whitelisted. */
-	UE::Cook::FWorkerId GetWhitelistedWorker(const FName& PackageName) const;
+/** Return true if the package path matches LocalWorkerPackageFilters */
+bool IsLocalCookPackage(const FString& FilePath) const;
 
 
 
