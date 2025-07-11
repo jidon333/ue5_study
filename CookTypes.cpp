@@ -631,8 +631,9 @@ FCbWriter& operator<<(FCbWriter& Writer, const UE::Cook::FInitializeConfigSettin
 	Writer << "SoftGCDenominator" << Value.SoftGCDenominator;
 	Writer << "MinFreeUObjectIndicesBeforeGC" << Value.MinFreeUObjectIndicesBeforeGC;
 	Writer << "MaxNumPackagesBeforePartialGC" << Value.MaxNumPackagesBeforePartialGC;
-	Writer << "ConfigSettingDenyList" << Value.ConfigSettingDenyList;
-	Writer << "MaxAsyncCacheForType" << Value.MaxAsyncCacheForType;
+       Writer << "ConfigSettingDenyList" << Value.ConfigSettingDenyList;
+       Writer << "LocalWorkerPackageFilters" << Value.LocalWorkerPackageFilters;
+       Writer << "MaxAsyncCacheForType" << Value.MaxAsyncCacheForType;
 	// Make sure new values are added to LoadFromCompactBinary and MoveOrCopy
 	Writer.EndObject();
 	return Writer;
@@ -666,8 +667,9 @@ bool LoadFromCompactBinary(FCbFieldView Field, UE::Cook::FInitializeConfigSettin
 	bOk = LoadFromCompactBinary(Field["SoftGCDenominator"], OutValue.SoftGCDenominator) & bOk;
 	bOk = LoadFromCompactBinary(Field["MinFreeUObjectIndicesBeforeGC"], OutValue.MinFreeUObjectIndicesBeforeGC) & bOk;
 	bOk = LoadFromCompactBinary(Field["MaxNumPackagesBeforePartialGC"], OutValue.MaxNumPackagesBeforePartialGC) & bOk;
-	bOk = LoadFromCompactBinary(Field["ConfigSettingDenyList"], OutValue.ConfigSettingDenyList) & bOk;
-	bOk = LoadFromCompactBinary(Field["MaxAsyncCacheForType"], OutValue.MaxAsyncCacheForType) & bOk;
+       bOk = LoadFromCompactBinary(Field["ConfigSettingDenyList"], OutValue.ConfigSettingDenyList) & bOk;
+       bOk = LoadFromCompactBinary(Field["LocalWorkerPackageFilters"], OutValue.LocalWorkerPackageFilters) & bOk;
+       bOk = LoadFromCompactBinary(Field["MaxAsyncCacheForType"], OutValue.MaxAsyncCacheForType) & bOk;
 	// Make sure new values are added to MoveOrCopy and operator<<
 	return bOk;
 }
@@ -694,8 +696,9 @@ void FInitializeConfigSettings::MoveOrCopy(SourceType&& Source, TargetType&& Tar
 	Target.SoftGCDenominator = Source.SoftGCDenominator;
 	Target.MinFreeUObjectIndicesBeforeGC = Source.MinFreeUObjectIndicesBeforeGC;
 	Target.MaxNumPackagesBeforePartialGC = Source.MaxNumPackagesBeforePartialGC;
-	Target.ConfigSettingDenyList = MoveTempIfPossible(Source.ConfigSettingDenyList);
-	Target.MaxAsyncCacheForType = MoveTempIfPossible(Source.MaxAsyncCacheForType);
+       Target.ConfigSettingDenyList = MoveTempIfPossible(Source.ConfigSettingDenyList);
+       Target.LocalWorkerPackageFilters = MoveTempIfPossible(Source.LocalWorkerPackageFilters);
+       Target.MaxAsyncCacheForType = MoveTempIfPossible(Source.MaxAsyncCacheForType);
 	// Make sure new values are added to operator<< and LoadFromCompactBinary
 }
 

@@ -3188,28 +3188,11 @@ void UCookOnTheFlyServer::QueueDiscoveredPackageOnDirector(UE::Cook::FPackageDat
 	using namespace UE::Cook;
 
 
-	const FString FilePath = PackageData.GetFileName().ToString();
-	bool bIsWwiseFile = FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
-						FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
-						FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
-
-	UE_LOG(LogCook, Display, TEXT("[QueueDiscoveredPackageOnDirector] package locked to LocalWorker: %s  (Path: %s), Instigator=%s"),
-		*PackageData.GetPackageName().ToString(), *FilePath, *Instigator.ToString());
-
-	if (bIsWwiseFile)
-	{
-		AddWhitelistedPackage(PackageData.GetPackageName(), UE::Cook::FWorkerId::Local());
-		PackageData.SetWorkerAssignmentConstraint(UE::Cook::FWorkerId::Local());
-
-		UE_LOG(LogCook, Display, TEXT("[QueueDiscoveredPackageOnDirector] SetWorkerAssignmentConstraint to LocalWorker: %s  (Path: %s), Instigator=%s"),
-			*PackageData.GetPackageName().ToString(), *FilePath, *Instigator.ToString());
-
-		UE_CLOG(CookDirector == nullptr, LogCook, Warning,
-			TEXT("[QueueDiscoveredPackageOnDirector] Unexpected Wwise package assignment seen in Worker! "
-				"Pkg=%s  Path=%s  — please verify scheduling."),
-			*PackageData.GetPackageName().ToString(), *FilePath);
-
-	}
+       const FString FilePath = PackageData.GetFileName().ToString();
+       if (IsLocalCookPackage(FilePath))
+       {
+               PackageData.SetWorkerAssignmentConstraint(UE::Cook::FWorkerId::Local());
+       }
 
 	if (CookOnTheFlyRequestManager)
 	{
@@ -3223,18 +3206,11 @@ void UCookOnTheFlyServer::QueueDiscoveredPackageOnDirector(UE::Cook::FPackageDat
 		}
 	}
 
-	if (!CookByTheBookOptions->bSkipHardReferences ||
-		(Instigator.Category == EInstigator::GeneratedPackage))
-	{
-		UE::Cook::FWorkerId WhitelistWorker = GetWhitelistedWorker(PackageData.GetPackageName());
-		if (WhitelistWorker.IsValid())
-		{
-			PackageData.SetWorkerAssignmentConstraint(WhitelistWorker);
-			UE_LOG(LogCook, Display, TEXT("[QueueDiscoveredPackageOnDirector] SetWorkerAssignmentConstraint to WhitelistWorker: %s  (Path: %s), Instigator=%s"),
-				*PackageData.GetPackageName().ToString(), *FilePath, *Instigator.ToString());
-		}
-		PackageData.QueueAsDiscovered(MoveTemp(Instigator), MoveTemp(ReachablePlatforms), bUrgent);
-	}
+       if (!CookByTheBookOptions->bSkipHardReferences ||
+               (Instigator.Category == EInstigator::GeneratedPackage))
+       {
+               PackageData.QueueAsDiscovered(MoveTemp(Instigator), MoveTemp(ReachablePlatforms), bUrgent);
+       }
 }
 
 void UCookOnTheFlyServer::OnRemoveSessionPlatform(const ITargetPlatform* TargetPlatform, int32 RemovedIndex)
@@ -7087,7 +7063,12 @@ void FInitializeConfigSettings::LoadLocal(const FString& InOutputDirectoryOverri
 	MaxNumPackagesBeforePartialGC = 400;
 	GConfig->GetInt(TEXT("CookSettings"), TEXT("MaxNumPackagesBeforePartialGC"), MaxNumPackagesBeforePartialGC, GEditorIni);
 	
-	GConfig->GetArray(TEXT("CookSettings"), TEXT("CookOnTheFlyConfigSettingDenyList"), ConfigSettingDenyList, GEditorIni);
+       GConfig->GetArray(TEXT("CookSettings"), TEXT("CookOnTheFlyConfigSettingDenyList"), ConfigSettingDenyList, GEditorIni);
+       GConfig->GetArray(TEXT("CookSettings"), TEXT("LocalWorkerPackageFilters"), LocalWorkerPackageFilters, GEditorIni);
+       if (LocalWorkerPackageFilters.IsEmpty())
+       {
+               LocalWorkerPackageFilters = { TEXT("Wwise"), TEXT(".bnk"), TEXT(".wem") };
+       }
 
 	UE_LOG(LogCook, Display, TEXT("CookSettings for Memory:")
 		TEXT("\n\tMemoryMaxUsedVirtual %dMiB")
@@ -8067,24 +8048,21 @@ void UCookOnTheFlyServer::OnFConfigCreated(const FConfigFile* Config)
 		return;
 	}
 
-	FScopeLock Lock(&ConfigFileCS);
-	OpenConfigFiles.Add(Config);
+       FScopeLock Lock(&ConfigFileCS);
+       OpenConfigFiles.Add(Config);
 }
 
-void UCookOnTheFlyServer::AddWhitelistedPackage(const FName& PackageName, UE::Cook::FWorkerId WorkerId)
+bool UCookOnTheFlyServer::IsLocalCookPackage(const FString& FilePath) const
 {
-	WhitelistedPackages.Add(PackageName, WorkerId);
+       for (const FString& Filter : LocalWorkerPackageFilters)
+       {
+               if (FilePath.Contains(Filter, ESearchCase::IgnoreCase))
+               {
+                       return true;
+               }
+       }
+       return false;
 }
-
-UE::Cook::FWorkerId UCookOnTheFlyServer::GetWhitelistedWorker(const FName& PackageName) const
-{
-	if (const UE::Cook::FWorkerId* Found = WhitelistedPackages.Find(PackageName))
-	{
-		return *Found;
-	}
-	return UE::Cook::FWorkerId::Invalid();
-}
-
 
 void UCookOnTheFlyServer::OnFConfigDeleted(const FConfigFile* Config)
 {

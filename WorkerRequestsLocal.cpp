@@ -57,36 +57,16 @@ void FWorkerRequestsLocal::QueueDiscoveredPackage(UCookOnTheFlyServer& COTFS, FP
 void FWorkerRequestsLocal::AddStartCookByTheBookRequest(FFilePlatformRequest&& Request)
 {
 	const FString FilePath = Request.GetFilename().ToString();
-	const bool bIsWwiseFile =
-		FilePath.Contains(TEXT("Wwise"), ESearchCase::IgnoreCase) ||
-		FilePath.EndsWith(TEXT(".bnk"), ESearchCase::IgnoreCase) ||
-		FilePath.EndsWith(TEXT(".wem"), ESearchCase::IgnoreCase);
-
-	if (bIsWwiseFile && COTFS_Cached)
-	{
-		if (COTFS_Cached->PackageDatas)
-		{
-			if (UE::Cook::FPackageData* PackageData = COTFS_Cached->PackageDatas->TryAddPackageDataByFileName(Request.GetFilename()))
-			{
-				COTFS_Cached->AddWhitelistedPackage(PackageData->GetPackageName(), UE::Cook::FWorkerId::Local());
-
-				PackageData->SetWorkerAssignmentConstraint(
-					UE::Cook::FWorkerId::Local());
-
-				// 패키지 강제 생성 및 로컬 고정 알림
-				UE_LOG(LogCook, Display,
-					TEXT("[AddStartCookByTheBookRequest] Wwise package pre-created & locked to LocalWorker: %s  (Path: %s)"),
-					*PackageData->GetPackageName().ToString(), *FilePath);
-			}
-			else
-			{
-				// 만약 패키지가 이미 존재했거나 생성 실패 시 참고용 로그
-				UE_LOG(LogCook, Display,
-					TEXT("[AddStartCookByTheBookRequest] Wwise package already tracked or failed to create: %s"),
-					*FilePath);
-			}
-		}
-	}
+       if (COTFS_Cached && COTFS_Cached->IsLocalCookPackage(FilePath))
+       {
+               if (COTFS_Cached->PackageDatas)
+               {
+                       if (UE::Cook::FPackageData* PackageData = COTFS_Cached->PackageDatas->TryAddPackageDataByFileName(Request.GetFilename()))
+                       {
+                               PackageData->SetWorkerAssignmentConstraint(UE::Cook::FWorkerId::Local());
+                       }
+               }
+       }
 
 	ExternalRequests.EnqueueUnique(MoveTemp(Request));
 }
