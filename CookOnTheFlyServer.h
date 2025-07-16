@@ -23,7 +23,6 @@
 #include "UObject/Package.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/WeakObjectPtr.h"
-#include "Cooker/MPCollector.h"
 
 #include "CookOnTheFlyServer.generated.h"
 
@@ -423,16 +422,13 @@ private:
 	/** List of filenames that may be out of date in the asset registry */
 	TSet<FName> ModifiedAssetFilenames;
 
+	/** Strings that indicate packages which must be cooked on the local worker */
+	TArray<FString> LocalWorkerPackageFilters;
 
-	//// 쿠킹 우회 작업 /// 
+	/** Return true if the package path matches LocalWorkerPackageFilters */
+	bool IsLocalCookPackage(const FString& FilePath) const;
 
-/** Strings that indicate packages which must be cooked on the local worker */
-TArray<FString> LocalWorkerPackageFilters;
-
-/** Return true if the package path matches LocalWorkerPackageFilters */
-bool IsLocalCookPackage(const FString& FilePath) const;
-
-
+	bool ApplyLocalCookConstraintIfMatched(const FName& FilePath);
 
 	//////////////////////////////////////////////////////////////////////////
 	// iterative ini settings checking

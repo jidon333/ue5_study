@@ -361,6 +361,14 @@ void FCookDirector::AssignRequests(TArray<FWorkerId>&& InWorkers, TArray<TRefCou
 			else
 			{
 				Assignment = WorkerId;
+
+				// Log Worker Id for local only cooking case.
+
+				FString WorkerDesc = Assignment.IsLocal() ? TEXT("Local") : FString::Printf(TEXT("Remote[%d]"), Assignment.GetRemoteIndex());
+				UE_LOG(LogCook, Verbose, TEXT("[CookAssign] %s → %s (single-worker path)"),
+					*Request->GetPackageName().ToString(),
+					*WorkerDesc);
+
 			}
 		}
 		if (!WorkerId.IsLocal())
@@ -411,7 +419,11 @@ void FCookDirector::AssignRequests(TArray<FWorkerId>&& InWorkers, TArray<TRefCou
 
 	for (int32 RequestIndex = 0; RequestIndex < Requests.Num(); ++RequestIndex)
 	{
+		FString	AssignReason = TEXT("LoadBalanced");
 		FWorkerId& WorkerId = OutAssignments[RequestIndex];
+		FPackageData* Request = Requests[RequestIndex];
+
+
 		// Override the loadbalancer's assignment if the Package has a WorkerAssignmentConstraint
 		// This allows us to guarantee that generated packages will be cooked on the worker that cooked
 		// their generator package
@@ -419,12 +431,20 @@ void FCookDirector::AssignRequests(TArray<FWorkerId>&& InWorkers, TArray<TRefCou
 		if (WorkerIdConstraint.IsValid())
 		{
 			WorkerId = WorkerIdConstraint;
+			AssignReason = TEXT("Constraint");
 		}
 		// Override the loadbalancer's assignment to force it local if the Package is urgent
 		else if (Requests[RequestIndex]->GetIsUrgent())
 		{
 			WorkerId = FWorkerId::Local();
+			AssignReason = TEXT("Urgent");
 		}
+
+		
+		// Log WorkerId
+		const FString WorkerDesc = WorkerId.IsLocal() ? TEXT("Local")  : FString::Printf(TEXT("Remote[%d]"), WorkerId.GetRemoteIndex());
+		UE_LOG(LogCook, Verbose, TEXT("[CookAssign] %-60s → %-10s (%s)"), *Request->GetPackageName().ToString(),  *WorkerDesc, *AssignReason);
+
 
 		if (!WorkerId.IsLocal())
 		{
@@ -442,6 +462,12 @@ void FCookDirector::AssignRequests(TArray<FWorkerId>&& InWorkers, TArray<TRefCou
 				RemoteBatch.Reserve(2 * Requests.Num() / (InWorkers.Num()));
 			}
 			RemoteBatch.Add(Requests[RequestIndex]);
+
+			// Log Batch size
+			UE_LOG(LogCook, Verbose,  TEXT("[CookBatch] %s added to Remote[%d] (batch size: %d)"), 
+				*Request->GetPackageName().ToString(),
+				RemoteIndex,
+				RemoteBatch.Num());
 		}
 	}
 
