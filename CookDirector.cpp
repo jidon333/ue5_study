@@ -152,12 +152,17 @@ FCookDirector::FCookDirector(UCookOnTheFlyServer& InCOTFS, int32 CookProcessCoun
 			// Called from inside CommunicationLock
 			RetractionHandler->HandleRetractionMessage(Context, bReadSuccessful, MoveTemp(Message));
 		}));
-	Register(new TMPCollectorServerMessageCallback<FHeartbeatMessage>([this]
-	(FMPCollectorServerMessageContext& Context, bool bReadSuccessful, FHeartbeatMessage&& Message)
-		{
-			HandleHeartbeatMessage(Context, bReadSuccessful, MoveTemp(Message));
-		}));
-	Register(new FAssetRegistryMPCollector(COTFS));
+        Register(new TMPCollectorServerMessageCallback<FHeartbeatMessage>([this]
+        (FMPCollectorServerMessageContext& Context, bool bReadSuccessful, FHeartbeatMessage&& Message)
+                {
+                        HandleHeartbeatMessage(Context, bReadSuccessful, MoveTemp(Message));
+                }));
+       Register(new TMPCollectorServerMessageCallback<FRequestLocalCookMessage>([this]
+       (FMPCollectorServerMessageContext& Context, bool bReadSuccessful, FRequestLocalCookMessage&& Message)
+               {
+                       HandleRequestLocalCookMessage(Context, bReadSuccessful, MoveTemp(Message));
+               }));
+        Register(new FAssetRegistryMPCollector(COTFS));
 	Register(new FPackageWriterMPCollector(COTFS));
 
 	LastTickTimeSeconds = FPlatformTime::Seconds();
@@ -927,7 +932,7 @@ void FCookDirector::ResetFinalIdleHeartbeatFence()
 }
 
 void FCookDirector::HandleHeartbeatMessage(FMPCollectorServerMessageContext& Context, bool bReadSuccessful,
-	FHeartbeatMessage&& Message)
+        FHeartbeatMessage&& Message)
 {
 	if (!bReadSuccessful)
 	{
@@ -936,7 +941,36 @@ void FCookDirector::HandleHeartbeatMessage(FMPCollectorServerMessageContext& Con
 		return;
 	}
 
-	Context.GetCookWorkerServer()->SetLastReceivedHeartbeatNumberInLock(Message.HeartbeatNumber);
+        Context.GetCookWorkerServer()->SetLastReceivedHeartbeatNumberInLock(Message.HeartbeatNumber);
+}
+
+void FCookDirector::HandleRequestLocalCookMessage(FMPCollectorServerMessageContext& Context, bool bReadSuccessful,
+       FRequestLocalCookMessage&& Message)
+{
+       if (!bReadSuccessful)
+       {
+               UE_LOG(LogCook, Error, TEXT("Corrupt RequestLocalCookMessage received from CookWorker %d. It will be ignored."),
+                       Context.GetProfileId());
+               return;
+       }
+
+       FPackageData* PackageData = COTFS.PackageDatas->FindPackageDataByPackageName(Message.PackageName);
+       if (!PackageData)
+       {
+               UE_LOG(LogCook, Warning, TEXT("RequestLocalCookMessage for unknown package %s from %s"),
+                       *Message.PackageName.ToString(), *GetDisplayName(Context.GetWorkerId()));
+               return;
+       }
+
+       const TRefCountPtr<FCookWorkerServer>* RemoteWorkerPtr = FindRemoteWorkerInLock(Context.GetWorkerId());
+       if (RemoteWorkerPtr)
+       {
+               (*RemoteWorkerPtr)->AbortAssignment(*PackageData, ECookDirectorThread::SchedulerThread, ENotifyRemote::LocalOnly);
+       }
+
+       PackageData->SetWorkerAssignment(FWorkerId::Invalid());
+       PackageData->SetWorkerAssignmentConstraint(FWorkerId::Local());
+       PackageData->SendToState(EPackageState::Request, ESendFlags::QueueAddAndRemove, EStateChangeReason::DirectorRequest);
 }
 
 

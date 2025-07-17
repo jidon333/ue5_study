@@ -23,6 +23,7 @@ namespace UE::Cook { struct FHeartbeatMessage; }
 namespace UE::Cook { struct FInitialConfigMessage; }
 namespace UE::Cook { struct FPackageRemoteResult; }
 namespace UE::Cook { struct FRetractionRequestMessage; }
+namespace UE::Cook { struct FRequestLocalCookMessage; }
 
 namespace UE::Cook
 {
@@ -65,8 +66,10 @@ public:
 	/** Queue a message to the server that the Package was saved. Will be sent during Tick. */
 	void ReportPromoteToSaveComplete(FPackageData& PackageData);
 	/** Queue a message to the server that a package was discovered as needed in the cook. Will be sent during Tick. */
-	void ReportDiscoveredPackage(const FPackageData& PackageData, const FInstigator& Instigator,
-		FDiscoveredPlatformSet&& ReachablePlatforms);
+        void ReportDiscoveredPackage(const FPackageData& PackageData, const FInstigator& Instigator,
+                FDiscoveredPlatformSet&& ReachablePlatforms);
+       /** Request that the Director reschedule the given package for local cooking. */
+       void RequestLocalCook(FName PackageName);
 
 	/** Register a Collector for periodic ticking that sends messages to the Director. */
 	void Register(IMPCollector* Collector);

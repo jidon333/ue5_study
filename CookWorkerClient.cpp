@@ -307,14 +307,21 @@ void FCookWorkerClient::ReportPackageMessage(FName PackageName, TUniquePtr<FPack
 }
 
 void FCookWorkerClient::ReportDiscoveredPackage(const FPackageData& PackageData, const FInstigator& Instigator,
-	FDiscoveredPlatformSet&& ReachablePlatforms)
+        FDiscoveredPlatformSet&& ReachablePlatforms)
 {
 	FDiscoveredPackageReplication& Discovered = PendingDiscoveredPackages.Emplace_GetRef();
 	Discovered.PackageName = PackageData.GetPackageName();
 	Discovered.NormalizedFileName = PackageData.GetFileName();
 	Discovered.Instigator = Instigator;
 	Discovered.Platforms = MoveTemp(ReachablePlatforms);
-	Discovered.Platforms.ConvertToBitfield(OrderedSessionAndSpecialPlatforms);
+        Discovered.Platforms.ConvertToBitfield(OrderedSessionAndSpecialPlatforms);
+}
+
+void FCookWorkerClient::RequestLocalCook(FName PackageName)
+{
+       FRequestLocalCookMessage Message;
+       Message.PackageName = PackageName;
+       SendMessage(Message);
 }
 
 EPollStatus FCookWorkerClient::PollTryConnect(const FDirectorConnectionInfo& ConnectInfo)

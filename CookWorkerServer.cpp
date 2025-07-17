@@ -1372,7 +1372,19 @@ void FHeartbeatMessage::Write(FCbWriter& Writer) const
 
 bool FHeartbeatMessage::TryRead(FCbObjectView Object)
 {
-	return LoadFromCompactBinary(Object["H"], HeartbeatNumber);
+        return LoadFromCompactBinary(Object["H"], HeartbeatNumber);
+}
+
+FGuid FRequestLocalCookMessage::MessageType(TEXT("BFA0E8C648E0416587150F1CCDFCB648"));
+
+void FRequestLocalCookMessage::Write(FCbWriter& Writer) const
+{
+       Writer << "PackageName" << PackageName;
+}
+
+bool FRequestLocalCookMessage::TryRead(FCbObjectView Object)
+{
+       return LoadFromCompactBinary(Object["PackageName"], PackageName);
 }
 
 FPackageWriterMPCollector::FPackageWriterMPCollector(UCookOnTheFlyServer& InCOTFS)

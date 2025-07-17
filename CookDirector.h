@@ -33,6 +33,7 @@ namespace UE::Cook { struct FHeartbeatMessage; }
 namespace UE::Cook { struct FInitialConfigMessage; }
 namespace UE::Cook { struct FPackageData; }
 namespace UE::Cook { struct FRetractionResultsMessage; }
+namespace UE::Cook { struct FRequestLocalCookMessage; }
 namespace UE::Cook { struct FWorkerId; }
 
 LLM_DECLARE_TAG(Cooker_MPCook);
@@ -184,8 +185,11 @@ private:
 	/** Reset the IdleHeartbeatFence when new idle-breaking data comes in. */
 	void ResetFinalIdleHeartbeatFence();
 	/** Log the occurrence of a heartbeat message from a CookWorker. */
-	void HandleHeartbeatMessage(FMPCollectorServerMessageContext& Context, bool bReadSuccessful,
-		FHeartbeatMessage&& Message);
+        void HandleHeartbeatMessage(FMPCollectorServerMessageContext& Context, bool bReadSuccessful,
+                FHeartbeatMessage&& Message);
+       /** Handle a request from a CookWorker to cook a package locally on the Director. */
+       void HandleRequestLocalCookMessage(FMPCollectorServerMessageContext& Context, bool bReadSuccessful,
+               FRequestLocalCookMessage&& Message);
 
 	/** Move the given worker from active workers to the list of workers shutting down. */
 	void AbortWorker(FWorkerId WorkerId, ECookDirectorThread TickThread);

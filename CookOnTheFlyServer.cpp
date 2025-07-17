@@ -31,6 +31,8 @@
 #include "Cooker/CookSandbox.h"
 #include "Cooker/CookTypes.h"
 #include "Cooker/CookWorkerClient.h"
+#include "AkAudioType.h"
+#include "AkInitBank.h"
 #include "Cooker/DiffPackageWriter.h"
 #include "Cooker/IoStoreCookOnTheFlyRequestManager.h"
 #include "Cooker/IterativeValidatePackageWriter.h"
@@ -12832,11 +12834,20 @@ void UCookOnTheFlyServer::RouteBeginCacheForCookedPlatformData(UE::Cook::FPackag
 		CCPDState.AddRefFrom(&PackageData);
 		ExistingEvent = &CCPDState.PlatformStates.FindOrAdd(TargetPlatform, ECachedCookedPlatformDataEvent::None);
 	}
-	if (*ExistingEvent != ECachedCookedPlatformDataEvent::None)
-	{
-		// BeginCacheForCookedPlatformData was already called; do not call it again
-		return;
-	}
+       if (*ExistingEvent != ECachedCookedPlatformDataEvent::None)
+       {
+               // BeginCacheForCookedPlatformData was already called; do not call it again
+               return;
+       }
+
+       if (IsCookWorkerProcess() && (Obj->IsA<UAkAudioType>() || Obj->IsA<UAkInitBank>()))
+       {
+               if (CookWorkerClient)
+               {
+                       CookWorkerClient->RequestLocalCook(PackageName);
+               }
+               return;
+       }
 
 	// We need to set our scopes for e.g. TObjectPtr reads around the call to BeginCacheForCookedPlatformData,
 	// but in some cases we have already set the scope (e.g. when calling BeginCache from inside SavePackage)
