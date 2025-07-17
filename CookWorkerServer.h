@@ -405,8 +405,25 @@ public:
 	virtual const TCHAR* GetDebugName() const override { return TEXT("HeartbeatMessage"); }
 
 public:
-	int32 HeartbeatNumber;
-	static FGuid MessageType;
+        int32 HeartbeatNumber;
+        static FGuid MessageType;
+};
+
+/**
+ * Message from CookWorker to CookDirector requesting that the given package be
+ * cooked locally by the Director rather than the remote worker.
+ */
+struct FRequestLocalCookMessage : public IMPCollectorMessage
+{
+public:
+       virtual void Write(FCbWriter& Writer) const override;
+       virtual bool TryRead(FCbObjectView Object) override;
+       virtual FGuid GetMessageType() const override { return MessageType; }
+       virtual const TCHAR* GetDebugName() const override { return TEXT("RequestLocalCookMessage"); }
+
+public:
+       FName PackageName;
+       static FGuid MessageType;
 };
 constexpr FStringView HeartbeatCategoryText(TEXTVIEW("CookWorkerHeartbeat:"));
 
