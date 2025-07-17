@@ -31,8 +31,6 @@
 #include "Cooker/CookSandbox.h"
 #include "Cooker/CookTypes.h"
 #include "Cooker/CookWorkerClient.h"
-#include "AkAudioType.h"
-#include "AkInitBank.h"
 #include "Cooker/DiffPackageWriter.h"
 #include "Cooker/IoStoreCookOnTheFlyRequestManager.h"
 #include "Cooker/IterativeValidatePackageWriter.h"
@@ -12818,6 +12816,25 @@ void UCookOnTheFlyServer::RegisterLocalizationChunkDataGenerator()
 	}
 }
 
+static bool IsWwiseAudioAsset(const UObject* Object)
+{
+	static UClass* AkAudioTypeClass = nullptr;
+	static bool    bFirstTry = false;
+
+	if (!bFirstTry)
+	{
+		AkAudioTypeClass = FindObject<UClass>(ANY_PACKAGE, TEXT("AkAudioType"));
+		bFirstTry = true;
+	}
+
+	if (!AkAudioTypeClass || !Object)
+	{
+		return false;
+	}
+
+	return Object->IsA(AkAudioTypeClass);
+}
+
 void UCookOnTheFlyServer::RouteBeginCacheForCookedPlatformData(UE::Cook::FPackageData& PackageData, UObject* Obj,
 	const ITargetPlatform* TargetPlatform, UE::Cook::ECachedCookedPlatformDataEvent* ExistingEvent)
 {
@@ -12834,20 +12851,23 @@ void UCookOnTheFlyServer::RouteBeginCacheForCookedPlatformData(UE::Cook::FPackag
 		CCPDState.AddRefFrom(&PackageData);
 		ExistingEvent = &CCPDState.PlatformStates.FindOrAdd(TargetPlatform, ECachedCookedPlatformDataEvent::None);
 	}
-       if (*ExistingEvent != ECachedCookedPlatformDataEvent::None)
-       {
-               // BeginCacheForCookedPlatformData was already called; do not call it again
-               return;
-       }
+	if (*ExistingEvent != ECachedCookedPlatformDataEvent::None)
+	{
+		// BeginCacheForCookedPlatformData was already called; do not call it again
+		return;
+	}
 
-       if (IsCookWorkerProcess() && (Obj->IsA<UAkAudioType>() || Obj->IsA<UAkInitBank>()))
-       {
-               if (CookWorkerClient)
-               {
-                       CookWorkerClient->RequestLocalCook(PackageName);
-               }
-               return;
-       }
+
+
+	if (IsCookWorkerMode() && IsWwiseAudioAsset(Obj))
+	{
+		if (CookWorkerClient)
+		{
+			CookWorkerClient->RequestLocalCook(PackageName);
+		}
+		return;
+	}
+
 
 	// We need to set our scopes for e.g. TObjectPtr reads around the call to BeginCacheForCookedPlatformData,
 	// but in some cases we have already set the scope (e.g. when calling BeginCache from inside SavePackage)
