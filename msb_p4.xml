@@ -1,0 +1,71 @@
+﻿<Project DefaultTargets="" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="msb_env.xml" />
+
+  <PropertyGroup>
+    <P4SubmoduleUseRelease>False</P4SubmoduleUseRelease> <!-- or True -->
+    <P4SubmoduleUseBuild>False</P4SubmoduleUseBuild> <!-- or True -->
+    <P4ShortLog>False</P4ShortLog>  <!-- update 시에 p4 로그를 최소화한다. -->
+    <P4Revision></P4Revision>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <P4SubmoduleType>trunk</P4SubmoduleType>
+    <P4SubmoduleType Condition="$(P4SubmoduleUseRelease)">release</P4SubmoduleType>
+    <P4SubmoduleType Condition="$(P4SubmoduleUseBuild)">build</P4SubmoduleType>
+    <UseApplyChangesSwitch Condition="$(UseApplyChanges)">-use_apply_changes</UseApplyChangesSwitch>
+    <P4FeatureStream Condition=" '$(UseFeatureStream)' == '' ">-p4feature none</P4FeatureStream>
+    <P4FeatureStream Condition=" '$(UseFeatureStream)' != '' ">-p4feature $(UseFeatureStream)</P4FeatureStream>
+    <P4ShortLogOption Condition="$(P4ShortLog)">-short_log</P4ShortLogOption>
+  </PropertyGroup>
+  
+  <PropertyGroup>
+    <P4RevisionOption Condition=" '$(P4Revision)' == '' "></P4RevisionOption>
+    <P4RevisionOption Condition=" '$(P4Revision)' != '' ">-P4Revision $(P4Revision)</P4RevisionOption>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <MapNameParam Condition=" '$(MapName)' == '' "></MapNameParam>
+    <MapNameParam Condition=" '$(MapName)' != '' ">-MapName $(MapName)</MapNameParam>
+    <ArtBranchNameParam Condition=" '$(ArtBranchName)' == '' "></ArtBranchNameParam>
+    <ArtBranchNameParam Condition=" '$(ArtBranchName)' != '' ">-ArtBranchName $(ArtBranchName)</ArtBranchNameParam>
+  </PropertyGroup>
+
+  <Target Name="P4Update">
+    <Exec Condition=" '$(P4SubmoduleType)' == 'release' " Command="Powershell.exe -File p4_submodule.ps1 -command p4update -release_branch $(P4FeatureStream) -CCNetLabel $(CCNetLabel) $(P4RevisionOption) $(UseApplyChangesSwitch) $(P4ShortLogOption) $(MapNameParam) $(ArtBranchNameParam)" IgnoreStandardErrorWarningFormat="true"/>
+    <Exec Condition=" '$(P4SubmoduleType)' == 'build' " Command="Powershell.exe -File p4_submodule.ps1 -command p4update -build_branch $(P4FeatureStream) -CCNetLabel $(CCNetLabel) $(P4RevisionOption) $(UseApplyChangesSwitch) $(P4ShortLogOption) $(MapNameParam) $(ArtBranchNameParam)" IgnoreStandardErrorWarningFormat="true"/>
+    <Exec Condition=" '$(P4SubmoduleType)' == 'trunk' " Command="Powershell.exe -File p4_submodule.ps1 -command p4update $(P4FeatureStream) -CCNetLabel $(CCNetLabel) $(P4RevisionOption) $(UseApplyChangesSwitch) $(P4ShortLogOption) $(MapNameParam) $(ArtBranchNameParam)" IgnoreStandardErrorWarningFormat="true"/>
+  </Target>
+  
+  <Target Name="P4SubmoduleUpdate">
+    <Exec Condition=" '$(P4SubmoduleType)' == 'release' " Command="Powershell.exe -File p4_submodule.ps1 -command p4SubmoduleUpdate -release_branch $(P4FeatureStream) -CCNetLabel $(CCNetLabel) $(UseApplyChangesSwitch) $(P4ShortLogOption) $(MapNameParam) $(ArtBranchNameParam)" IgnoreStandardErrorWarningFormat="true"/>
+    <Exec Condition=" '$(P4SubmoduleType)' == 'build' " Command="Powershell.exe -File p4_submodule.ps1 -command p4SubmoduleUpdate -build_branch $(P4FeatureStream) -CCNetLabel $(CCNetLabel) $(UseApplyChangesSwitch) $(P4ShortLogOption) $(MapNameParam) $(ArtBranchNameParam)" IgnoreStandardErrorWarningFormat="true"/>
+    <Exec Condition=" '$(P4SubmoduleType)' == 'trunk' " Command="Powershell.exe -File p4_submodule.ps1 -command p4SubmoduleUpdate $(P4FeatureStream) -CCNetLabel $(CCNetLabel) $(UseApplyChangesSwitch) $(P4ShortLogOption) $(MapNameParam) $(ArtBranchNameParam)" IgnoreStandardErrorWarningFormat="true"/>
+  </Target>
+
+  <Target Name="P4Revert">
+    <Exec Command="Powershell.exe -File p4_update_buildscript.ps1" IgnoreStandardErrorWarningFormat="true"/>
+    <Exec Command="Powershell.exe -File p4_submodule.ps1 -command RevertChangelist" IgnoreStandardErrorWarningFormat="true"/>
+  </Target>
+   
+  <Target Name="P4Status">
+     <Exec Command="p4 opened" IgnoreStandardErrorWarningFormat="true"/> 
+  </Target>
+  
+  <Target Name="StatusAll">
+    <CallTarget Targets="P4Status" />
+  </Target>
+
+  <Target Name="UpdateAll">
+    <CallTarget Targets="P4Update" />
+    <CallTarget Targets="P4SubmoduleUpdate" />
+  </Target>
+  
+  <Target Name="UpdateAllForMapBaking">
+    <CallTarget Targets="P4Update" />
+    <CallTarget Targets="P4SubmoduleUpdate" />
+  </Target>
+  
+  <Target Name="RevertAll">
+    <CallTarget Targets="P4Revert" />
+  </Target>
+</Project>

@@ -1,0 +1,299 @@
+﻿<!--
+Unreal Client (TsGame.exe) 를 빌드해주는 것.
+-->
+<Project DefaultTargets="" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="msb_env.xml" />
+
+  <PropertyGroup>
+    <ProjectPackageName>XSX</ProjectPackageName>
+    <ProjectPublishFolder>$(GlobalPublishFolder)\$(ProjectPackageName)</ProjectPublishFolder>
+    <ProjectPublishS3Folder>$(GlobalPublishS3Folder)/$(ProjectPackageName)</ProjectPublishS3Folder>
+    <ProjectPackageFolder>$(GlobalPackageFolder)\$(ProjectPackageName)</ProjectPackageFolder>
+    <XboxPackageFolder>$(GlobalPackageFolder)\XSXPkg</XboxPackageFolder>
+    <XboxPackagePublishS3Folder>$(GlobalPublishS3Folder)/XSXPkg</XboxPackagePublishS3Folder>
+    <!-- <XdkVersion>170613</XdkVersion> -->
+    <AdditionalIterateParam Condition=" '$(Iterate)' == 'True'">-iterate</AdditionalIterateParam>
+    <AdditionalSkipCookParam Condition=" '$(SkipCook)' == 'True'">-skipcook</AdditionalSkipCookParam>
+	<AdditionalUpdateGlobalShaderParam Condition=" '$(UpdateGlobalShader)' == 'True'">-updateglobalshader</AdditionalUpdateGlobalShaderParam>
+    <AdditionalExcludeParam Condition=" '$(ExcludedOldPaks)' != '' ">--exclude TslGame/Content/Paks/PakList.json --exclude TslGame/Content/Paks/$(ExcludedOldPaks.Replace(':', ' --exclude TslGame/Content/Paks/'))</AdditionalExcludeParam>
+    <AdditionalPerfManifestParam Condition=" '$(GeneratePubGPerformanceManifest)' == 'True'">-generatePubGPerformanceManifest</AdditionalPerfManifestParam>
+	<UseConsoleCommandInShippingParam Condition=" '$(UseConsoleCommandInShipping)' == 'True' ">-UseConsoleCommandInShipping</UseConsoleCommandInShippingParam>
+	<UseNameEncryptionParam Condition=" '$(UseNameEncryption)' == 'True' ">-UseNameEncryption</UseNameEncryptionParam>
+  </PropertyGroup>
+  <Choose>
+	<When Condition=" '$(GlobalPlatform)' == 'Win64' ">
+		<PropertyGroup>
+			<GlobalPlatform>$(ProjectPackageName)</GlobalPlatform>
+		</PropertyGroup>
+	</When>
+  </Choose>
+
+  <PropertyGroup>
+    <!-- BP Nativization -->
+    <BPNativizationFolder>$(TslFullPath)\Intermediate\Plugins\$(ProjectPackageName)\NativizedAssets</BPNativizationFolder>
+    <BPNativizationPluginS3Folder>$(GlobalPublishS3Folder)/$(ProjectPackageName)_BPN</BPNativizationPluginS3Folder>
+    <BPNativizationPluginS3OldFolder>$(GlobalPublishS3OldFolder)/$(ProjectPackageName)_BPN</BPNativizationPluginS3OldFolder>
+  </PropertyGroup>
+
+  <Target Name="Build_Client" DependsOnTargets="BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ Build_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <BuildItem Include="TslGame">
+        <Configuration>$(GlobalConfig)</Configuration>
+        <Platform>$(GlobalPlatform)</Platform>
+      </BuildItem>
+    </ItemGroup>
+    
+    <Exec Command="Engine\Build\BatchFiles\Build.bat %(BuildItem.Identity) %(BuildItem.Platform) %(BuildItem.Configuration) $(TslUprojFullPath) -waitmutex $(VSVersionParam) $(AdditionalPerfManifestParam) $(DisableUnityBuild) $(UseConsoleCommandInShippingParam) $(UseNameEncryptionParam)" />
+  
+    <CallTarget Targets="CopyManfiestFile_Client" Condition=" '$(CopyManifestFile)' == 'True' " />
+  </Target>
+
+  <Target Name="CopyManfiestFile_Client">
+    <Message Text="@@@@@@@@ CopyManfiestFile_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <ItemGroup>
+      <CopyItem Include="Tsl\Binaries\XSX\AppxManifest.xml">
+        <To>$(ProjectPackageFolder)</To>
+      </CopyItem>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(CopyItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      />
+
+    <Exec Command="&quot;$(DurangoXDK)bin\Makepkg.exe&quot; AppData /d &quot;$(ProjectPackageFolder)&quot;" />
+  </Target>
+
+  <Target Name="UnrealPackage_Client" DependsOnTargets="BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ UnrealPackage_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <!-- BEGIN: BP nativization: 기존에 생성된 generated 폴더를 지우고, 기존 package를 재활용하는 경우 S3에서 가져온다. -->
+    <RemoveDir Directories="$(BPNativizationFolder)" ContinueOnError="WarnAndContinue" 
+      Condition=" Exists($(BPNativizationFolder)) " />
+    <MakeDir Directories="$(BPNativizationFolder)" ContinueOnError="WarnAndContinue" 
+      Condition=" $(EnableBPNativization) And '$(ReusedOldVersion)' != '' "/>
+    <Exec
+      Command="aws s3 cp $(BPNativizationPluginS3OldFolder) $(BPNativizationFolder)/ $(GlobalPublishS3Option) --no-progress --recursive"
+      Condition=" $(EnableBPNativization) And '$(ReusedOldVersion)' != '' "
+      />
+    <!-- END: BP nativization -->
+
+    <CallTarget Targets="ClearOnBranchChange"/>
+
+	<Exec
+		command=" python check_mutable_change.py $(Revision) $(BuilderName) $(BuildNumber) $(Branch) $(BuildbotURL)"
+		Condition=" '$(MutableCookingOption)' == 'By Change'"
+		ContinueOnError="False"
+		ConsoleToMSBuild="true"
+	>
+		<Output TaskParameter="ConsoleOutput" PropertyName="CheckResult" />
+	</Exec>
+		
+	<PropertyGroup>
+		<NeedMutableCooking Condition = "'$(MutableCookingOption)' == 'Force Enable' OR '$(CheckResult)' == 'NeedMutableCooking'">-MutableCooking</NeedMutableCooking>
+	</PropertyGroup>
+	
+	<Exec
+		Command="msbuild_run.bat msb_main_editor.xml /p:GlobalConfig=Development /p:UseNameEncryption=$(UseNameEncryption) /t:Build_Editor"
+		Condition=" '$(NeedMutableCooking)' == '-MutableCooking'"
+	/>
+		
+	<Exec
+		command="CookMutables.bat -TARGETPLATFORM=XSX -UTF8Output"
+		Condition=" '$(NeedMutableCooking)' == '-MutableCooking'"
+		ContinueOnError="False"
+	/>
+	
+    <Exec
+      Command="RunUAT.bat BuildCookRun $(DefaultPackageArgument) -UTF8Output $(MapParam) $(VSVersionParam) $(AdditionalSkipCookParam) $(AdditionalUpdateGlobalShaderParam) $(UseConsoleCommandInShippingParam) $(UseNameEncryptionParam)"
+      WorkingDirectory="Engine\Build\BatchFiles"
+      />
+    <!--<CallTarget Targets="PackageTsl_BattlEye" />-->
+  </Target>
+
+  <Target Name="CopyPDBFiles_Client" DependsOnTargets="">
+    <Message Text="@@@@@@@@ CopyPDBFiles_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <!-- Xbox의 경우 PDB가 처음 컴파일한 경로에만 있어서 이것을 최종 패키지 결과 폴더로 가져와야 한다.
+    그래야 나중에 심볼을 symbol 서버로 업로드할 수 있다.
+    -->
+    <ItemGroup>
+      <EtcCopyItem Include="Tsl\Binaries\XSX\**\*.pdb">
+        <To>$(ProjectPackageFolder)</To>
+      </EtcCopyItem>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(EtcCopyItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      SkipUnchangedFiles="True" />
+  </Target>
+
+  <Target Name="XboxUtil" DependsOnTargets="" >
+    <ItemGroup>
+      <XboxBuildItem Include="XboxPDBFileUtil">
+        <Configuration>Development</Configuration>
+        <Platform>Win64</Platform>
+      </XboxBuildItem>
+    </ItemGroup>
+    
+    <Exec Command="Engine\Build\BatchFiles\Build.bat %(XboxBuildItem.Identity) %(XboxBuildItem.Platform) %(XboxBuildItem.Configuration) -waitmutex $(VSVersionParam)" />
+  </Target>
+
+  <Target Name="Package_Client" DependsOnTargets="BuildTsl_prepare">
+    <Message Text="@@@@@@@@ Package_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <!-- remove old pdbs -->
+    <ItemGroup>
+      <RemoveFiles Include="Tsl\Binaries\XSX\**\*.pdb" />
+      <RemoveFiles Include="Tsl\Binaries\XSX\**\*.exe" />
+      <RemoveFiles Include="Tsl\Binaries\XSX\**\*.dll" />
+    </ItemGroup>
+    <Delete Files="@(RemoveFiles)" />
+
+    <RemoveDir Condition=" '$(IncrementalCookParam)' != '-iterate' " Directories="$(TslFullPath)\Saved\Cooked\$(ProjectPackageName)" ContinueOnError="WarnAndContinue"/>
+  	<RemoveDir Directories="$(TslFullPath)\Saved\StagedBuilds\$(ProjectPackageName)" ContinueOnError="WarnAndContinue"/>
+
+    <CallTarget Targets="XboxUtil"/>
+    <CallTarget Targets="UnrealPackage_Client"/>
+
+    <CallTarget Targets="CopyPDBFiles_Client"/>
+  </Target>
+
+  <Target Name="CleanPackage_Client" DependsOnTargets="CheckProperty" >
+    <Message Text="@@@@@@@@ CleanPackage_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <PackageFolder Include="$(ProjectPackageFolder)" />
+    </ItemGroup>
+
+    <RemoveDir Directories="@(PackageFolder)" ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <Target Name="CleanPublish_Client" DependsOnTargets="CheckLabel">
+    <Message Text="@@@@@@@@ CleanPublish_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <RemoveDir Directories="$(ProjectPublishFolder)"  ContinueOnError="WarnAndContinue"/>
+    <MakeDir Directories="$(ProjectPublishFolder)"/>
+  </Target>
+
+  <Target Name="CodeSigning" DependsOnTargets="">
+    <Message Text="@@@@@@@@ CodeSigning @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <SignItem Include="$(ProjectPackageFolder)\TslGame\Binaries\Win64\TslGame.exe" />
+    </ItemGroup>
+    <Exec Command="$(CodeSigningBatchFilePath) &quot;%(SignItem.Identity)&quot;" ContinueOnError="True" />
+  </Target>
+
+  <Target Name="PublishCopy_Client" DependsOnTargets="CheckLabel;CleanPublish_Client;CodeSigning">
+    <Message Text="@@@@@@@@ PublishCopy_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <ItemGroup>
+      <CopyItem Include="$(ProjectPackageFolder)\Engine\**\*.*" 
+          Exclude="$(ProjectPackageFolder)\Engine\**\*.pdb">
+        <To>$(ProjectPublishFolder)\Engine</To>
+      </CopyItem>
+      <CopyItem Include="$(ProjectPackageFolder)\TslGame\**\*.*" 
+          Exclude="$(ProjectPackageFolder)\TslGame\**\*.pdb">
+        <To>$(ProjectPublishFolder)\TslGame</To>
+      </CopyItem>
+      <CopyItem Include="$(ProjectPackageFolder)\*.*" >
+        <To>$(ProjectPublishFolder)</To>
+      </CopyItem>
+
+      <!-- 각종 bat 파일은 클라이언트 publish에서 처리해준다. -->
+      <CopyItem Include="$(GlobalPackageFolder)\*.bat" >
+        <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+      <CopyItem Include="$(GlobalPackageFolder)\BroLauncher.*" >
+        <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+      <CopyItem Include="$(GlobalPackageFolder)\BuildProps\XSX.json">
+        <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(CopyItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      SkipUnchangedFiles="True"
+      UseHardlinksIfPossible="True"
+      />
+  </Target>
+
+  <Target Name="CleanPublishS3_Client" DependsOnTargets="CheckLabel;BuildTsl_prepare">
+    <Message Text="@@@@@@@@ CleanPublishS3_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="aws s3 rm $(ProjectPublishS3Folder)/ $(GlobalPublishS3Option) --recursive" />
+    <Exec Command="aws s3 rm $(BPNativizationPluginS3Folder)/ $(GlobalPublishS3Option) --recursive" />
+  </Target>
+
+  <Target Name="PublishCopyS3_Client" DependsOnTargets="CheckLabel;BuildTsl_prepare;CleanPublishS3_Client">
+    <Message Text="@@@@@@@@ PublishCopyS3_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="aws s3 cp $(ProjectPackageFolder) $(ProjectPublishS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude TslGame/Saved*" />
+    <Exec Command="aws s3 cp $(GlobalPackageFolder) $(GlobalPublishS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude * --include BuildProps/*.json" />
+    <Exec 
+      Command="aws s3 cp $(BPNativizationFolder) $(BPNativizationPluginS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude Binaries/* --exclude Intermediate/*" 
+      Condition="$(EnableBPNativization)" />
+  </Target>
+
+  <Target Name="CleanXboxPackage" DependsOnTargets="CheckLabel">
+    <RemoveDir Directories="$(XboxPackageFolder)"  ContinueOnError="WarnAndContinue"/>
+    <MakeDir Directories="$(XboxPackageFolder)"/>
+  </Target>
+
+  <Target Name="MakeXboxPackage" DependsOnTargets="CleanXboxPackage">
+    <!-- _Package\XSX 내용으로 Xbox 전용 package 를 만들어 낸다. 
+      만들어진 XSX 패키지는 _Package\XSXPkg 폴더에 들어간다.
+    -->
+
+    <Message Text="@@@@@@@@ MakeXboxPackage @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <Exec Command="Powershell.exe -File xbox_get_xdk_version.ps1" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="XdkVersionRaw" />
+    </Exec>
+
+    <PropertyGroup>
+      <XdkVersion>$(XdkVersionRaw.Trim())</XdkVersion>
+      <XvdPath>$(DurangoXDK)$(XdkVersion)\sideload\era.xvd</XvdPath>
+      <SrcFolder>$(ProjectPackageFolder)</SrcFolder>
+    </PropertyGroup>
+
+    <Message Text="XvdPath = $(XvdPath)" Importance="High" />
+
+    <!-- <RemoveDir Directories="$(TargetFolder)" ContinueOnError="WarnAndContinue"/>
+    <MakeDir Directories="$(TargetFolder)"/> -->
+    <Exec 
+      Command="&quot;$(DurangoXDK)bin\Makepkg.exe&quot; pack /updcompat 2 /gameos &quot;$(XvdPath)&quot; /f XSX_Layout.xml /d &quot;$(SrcFolder)&quot; /pd &quot;$(XboxPackageFolder)&quot; /lt"
+    />
+  </Target>
+
+  <Target Name="CleanPublishS3_XboxPackage" DependsOnTargets="CheckLabel">
+    <Message Text="@@@@@@@@ CleanPublishS3_XboxPackage @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="aws s3 rm $(XboxPackagePublishS3Folder)/ $(GlobalPublishS3Option) --recursive" />
+  </Target>
+  <Target Name="PublishCopyS3_XboxPackage" DependsOnTargets="CheckLabel;CleanPublishS3_XboxPackage">
+    <Message Text="@@@@@@@@ PublishCopyS3_XboxPackage @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="aws s3 cp $(XboxPackageFolder) $(XboxPackagePublishS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive" />
+  </Target>
+
+  <Target Name="PublishS3_Client_XboxPackage" DependsOnTargets="" Condition ="'$(GlobalConfig)' == 'Shipping'">
+    <!-- _Package\XSX에 이미 빌드가 있어야 동작하는 target이다. -->
+    <CallTarget Targets="MakeXboxPackage"/>
+    <CallTarget Targets="PublishCopyS3_XboxPackage"/>
+  </Target>
+
+  <Target Name="Publish_Client_XSX" DependsOnTargets="CheckLabel">
+    <CallTarget Targets="CleanPackage_Client;Package_Client"/>
+    <CallTarget Targets="PublishCopy_Client"/>
+  </Target>
+  <Target Name="PublishS3_Client_XSX" DependsOnTargets="CheckLabel">
+    <CallTarget Targets="CleanPackage_Client;Package_Client"/>
+    <CallTarget Targets="PublishCopyS3_Client"/>
+  </Target>
+
+  <Target Name="UploadProtocolToWiki" DependsOnTargets="CheckLabel" >
+    <Message Text="@@@@@@@@ Update_Protocol_Wiki @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <Exec Condition=" '$(IsDailyBuild)' == 'True' And '$(UploadProtocolWiki)' == 'True'" Command="Powershell.exe .\auto_protocol_uploader.ps1 lobby_gameclient $(TslFullPath) daily ltt_buildbot" />
+    <Exec Condition=" '$(IsDailyBuild)' == 'False' And '$(UploadProtocolWiki)' == 'True'" Command="Powershell.exe .\auto_protocol_uploader.ps1 lobby_gameclient $(TslFullPath) $(CCNetLabel) ltt_buildbot" />
+
+  </Target>
+</Project>
+

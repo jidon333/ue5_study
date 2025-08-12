@@ -1,0 +1,184 @@
+<!--
+Unreal Server (TslGameServer.exe) 를 빌드해주는 것.
+-->
+<Project DefaultTargets="" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="msb_env.xml" />
+
+  <PropertyGroup>
+    <ProjectPackageName>WindowsServer</ProjectPackageName>
+    <ProjectPublishFolder>$(GlobalPublishFolder)\$(ProjectPackageName)</ProjectPublishFolder>
+    <ProjectPublishS3Folder>$(GlobalPublishS3Folder)/$(ProjectPackageName)</ProjectPublishS3Folder>
+    <ProjectPackageFolder>$(GlobalPackageFolder)\$(ProjectPackageName)</ProjectPackageFolder>
+	<IncludeChinaModule>False</IncludeChinaModule>
+	<ExcludeChinaModule Condition=" '$(IncludeChinaModule)' == 'False' ">--exclude *tss_sdk* --exclude *tersafe*</ExcludeChinaModule>
+	<AdditionalExcludeArgs>$(ExcludeChinaModule)</AdditionalExcludeArgs>
+	<AdditionalIterateParam Condition=" '$(Iterate)' == 'True'">-iterativecooking</AdditionalIterateParam>
+    <AdditionalSkipCookParam Condition=" '$(SkipCook)' == 'True'">-skipcook</AdditionalSkipCookParam>
+    <AdditionalExcludeParam Condition=" '$(ExcludedOldPaks)' != '' ">--exclude TslGame/Content/Paks/PakList.json --exclude TslGame/Content/Paks/$(ExcludedOldPaks.Replace(':', ' --exclude TslGame/Content/Paks/'))</AdditionalExcludeParam>
+	<UseConsoleCommandInShippingParam Condition=" '$(UseConsoleCommandInShipping)' == 'True' ">-UseConsoleCommandInShipping</UseConsoleCommandInShippingParam>
+	<SkipPakParam Condition=" '$(ReuseLocalPaks)' == 'True' ">-skippak</SkipPakParam>
+	<UseNameEncryptionParam Condition=" '$(UseNameEncryption)' == 'True' ">-UseNameEncryption</UseNameEncryptionParam>
+  </PropertyGroup>
+
+  <PropertyGroup>
+	<ProjectPublishS3OldFolder>$(GlobalPublishS3OldFolder)/$(ProjectPackageName)</ProjectPublishS3OldFolder>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- BP Nativization -->
+    <BPNativizationFolder>$(TslFullPath)\Intermediate\Plugins\$(ProjectPackageName)\NativizedAssets</BPNativizationFolder>
+    <BPNativizationPluginS3Folder>$(GlobalPublishS3Folder)/$(ProjectPackageName)_BPN</BPNativizationPluginS3Folder>
+    <BPNativizationPluginS3OldFolder>$(GlobalPublishS3OldFolder)/$(ProjectPackageName)_BPN</BPNativizationPluginS3OldFolder>
+  </PropertyGroup>
+  
+  <Target Name="Build_Server" DependsOnTargets="BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ Build_Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <BuildItem Include="TslGameServer">
+        <Configuration>$(GlobalConfig)</Configuration>
+        <Platform>$(GlobalPlatform)</Platform>
+      </BuildItem>
+    </ItemGroup>
+    <Exec Command="Engine\Build\BatchFiles\Build.bat %(BuildItem.Identity) %(BuildItem.Platform) %(BuildItem.Configuration) $(TslUprojFullPath) -waitmutex $(VSVersionParam) $(EncryptionParam) $(DisableUnityBuild) $(UseConsoleCommandInShippingParam) $(UseNameEncryptionParam)" />
+  </Target>
+
+  <Target Name="PackageTsl_DbgDLL">
+    <Copy
+      SourceFiles="$(TslFullPath)\Binaries\Win64\dbgcore.dll;$(TslFullPath)\Binaries\Win64\dbgeng.dll;$(TslFullPath)\Binaries\Win64\dbghelp.dll"
+      DestinationFolder="$(ProjectPackageFolder)\TslGame\Binaries\Win64"
+	  Condition=" '$(GlobalPlatform)' == 'Win64' "
+	  ContinueOnError="WarnAndContinue"
+      />
+  </Target>
+
+  <Target Name="UnrealPackage_Server" DependsOnTargets="BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ UnrealPackage_Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <!-- BEGIN: BP nativization: 기존에 생성된 generated 폴더를 지우고, 기존 package를 재활용하는 경우 S3에서 가져온다. -->
+    <RemoveDir Directories="$(BPNativizationFolder)" ContinueOnError="WarnAndContinue" 
+      Condition="Exists($(BPNativizationFolder))" />
+    <MakeDir Directories="$(BPNativizationFolder)" ContinueOnError="WarnAndContinue" 
+      Condition=" $(EnableBPNativization) And '$(ReusedOldVersion)' != '' "/>
+    <Exec
+      Command="aws s3 cp $(BPNativizationPluginS3OldFolder) $(BPNativizationFolder)/ $(GlobalPublishS3Option) --no-progress --recursive"
+      Condition=" $(EnableBPNativization) And '$(ReusedOldVersion)' != '' "
+      />
+    <!-- END: BP nativization -->
+
+    <CallTarget Targets="ClearOnBranchChange"/>
+		
+    <Exec Command="msbuild_run.bat msb_main_editor.xml /p:GlobalConfig=Development /t:Build_Editor /p:EditorBuild=$(EditorBuild) /p:Branch=$(Branch)" />
+			
+    <Exec
+      Command="RunUAT.bat BuildCookRun $(DefaultPackageArgument) -cookincremental -UTF8Output $(MapParam) -server -serverplatform=$(GlobalPlatform) -noclient $(VSVersionParam) $(EncryptionParam) $(AdditionalSkipCookParam) $(UseConsoleCommandInShippingParam) $(SkipPakParam) -additionalcookeroptions=&quot;$(CookProcessCountParam)&quot; $(UseNameEncryptionParam)"
+      WorkingDirectory="Engine\Build\BatchFiles"
+      />
+    <Exec
+      Command="aws s3 cp $(ProjectPublishS3OldFolder) $(ProjectPackageFolder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude TslGame/Binaries* --exclude TslGameServer.exe --exclude Engine/Binaries* $(AdditionalExcludeParam)"
+      Condition=" '$(ReusedOldVersion)' != '' "
+      />
+	<CallTarget Targets="PackageTsl_DbgDLL" />
+  </Target>
+
+  <Target Name="CopyCustomPacakgeFiles_Server" DependsOnTargets="">
+    <Message Text="@@@@@@@@ CopyCustomPacakgeFiles_Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <EtcCopyItem Include="Tsl\Binaries\ThirdParty\BroCrashReporter\*.*" 
+        Exclude="Tsl\Binaries\ThirdParty\BroCrashReporter\*.pdb;Tsl\Binaries\ThirdParty\BroCrashReporter\*.vshost.*" >
+        <To>$(ProjectPackageFolder)\TslGame\Binaries\ThirdParty\BroCrashReporter</To>
+      </EtcCopyItem>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(EtcCopyItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      SkipUnchangedFiles="True" />
+  </Target>
+
+  <Target Name="Package_Server" DependsOnTargets="BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ Package_Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <RemoveDir Condition=" '$(IncrementalCookParam)' != '-iterate' " Directories="$(TslFullPath)\Saved\Cooked\$(ProjectPackageName)" ContinueOnError="WarnAndContinue"/>
+    <RemoveDir Directories="$(TslFullPath)\Saved\StagedBuilds\$(ProjectPackageName)" ContinueOnError="WarnAndContinue"/>
+
+    <CallTarget Targets="UnrealPackage_Server"/>
+    <CallTarget Targets="CopyCustomPacakgeFiles_Server"/>
+  </Target>
+
+  <Target Name="CleanPackage_Server" DependsOnTargets="CheckProperty" >
+    <Message Text="@@@@@@@@ CleanPackage_Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <PackageFolder Include="$(ProjectPackageFolder)" />
+    </ItemGroup>
+
+    <RemoveDir Directories="@(PackageFolder)" ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <Target Name="CleanPublish_Server" DependsOnTargets="CheckLabel">
+    <Message Text="@@@@@@@@ CleanPublish_Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <RemoveDir Directories="$(ProjectPublishFolder)"  ContinueOnError="WarnAndContinue"/>
+    <MakeDir Directories="$(ProjectPublishFolder)"/>
+  </Target>
+
+  <Target Name="PublishCopy_Server" DependsOnTargets="CheckLabel;CleanPublish_Server">
+    <Message Text="@@@@@@@@ PublishCopy_Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <ItemGroup>
+      <CopyItem Include="$(ProjectPackageFolder)\Engine\**\*.*"
+          Exclude="$(ProjectPackageFolder)\Engine\**\*.pdb">
+        <To>$(ProjectPublishFolder)\Engine</To>
+      </CopyItem>
+      <CopyItem Include="$(ProjectPackageFolder)\TslGame\**\*.*"
+          Exclude="$(ProjectPackageFolder)\TslGame\**\*.pdb">
+        <To>$(ProjectPublishFolder)\TslGame</To>
+      </CopyItem>
+      <CopyItem Include="$(ProjectPackageFolder)\*.*" >
+        <To>$(ProjectPublishFolder)</To>
+      </CopyItem>
+      <CopyItem Include="$(GlobalPackageFolder)\BuildProps\WindowsServer.json">
+        <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(CopyItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      SkipUnchangedFiles="True"
+      UseHardlinksIfPossible="True"
+      />
+  </Target>
+
+  <Target Name="CleanPublishS3_Server" DependsOnTargets="CheckLabel;BuildTsl_prepare">
+    <Message Text="@@@@@@@@ CleanPublishS3_Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="aws s3 rm $(ProjectPublishS3Folder)/ $(GlobalPublishS3Option) --recursive" />
+    <Exec Command="aws s3 rm $(BPNativizationPluginS3Folder)/ $(GlobalPublishS3Option) --recursive" />
+  </Target>
+
+  <Target Name="PublishCopyS3_Server" DependsOnTargets="CheckLabel;BuildTsl_prepare;CleanPublishS3_Server">
+    <Message Text="@@@@@@@@ PublishCopyS3_Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="aws s3 cp $(ProjectPackageFolder) $(ProjectPublishS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude *.pdb --exclude TslGame/Saved* $(AdditionalExcludeArgs)" />
+    <Exec Command="aws s3 cp $(GlobalPackageFolder) $(GlobalPublishS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude * --include BuildProps/*.json" />
+    <Exec Command="aws s3 cp $(GlobalPackageFolder) $(GlobalBakS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude *.* --include *.pdb --include *.map --include *.objpaths --include *.bak --include *.log " />
+    <Exec 
+      Command="aws s3 cp $(BPNativizationFolder) $(BPNativizationPluginS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude Binaries/* --exclude Intermediate/*" 
+      Condition="$(EnableBPNativization)" />
+  </Target>
+
+  <Target Name="Publish_Server" DependsOnTargets="CheckLabel">
+    <CallTarget Targets="CleanPackage_Server;Package_Server"/>
+    <CallTarget Targets="PublishCopy_Server"/>
+  </Target>
+  <Target Name="PublishS3_Server" DependsOnTargets="CheckLabel">
+    <CallTarget Targets="CleanPackage_Server;Package_Server"/>
+    <CallTarget Targets="PublishCopyS3_Server"/>
+  </Target>
+
+  <Target Name="UploadProtocolToWiki" DependsOnTargets="CheckLabel" >
+    <Message Text="@@@@@@@@ Update_Protocol_Wiki @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <Exec Condition=" '$(IsDailyBuild)' == 'True' And '$(UploadProtocolWiki)' == 'True'" Command="Powershell.exe .\auto_protocol_uploader.ps1 platform_gameserver $(TslFullPath) daily ltt_buildbot" />
+    <Exec Condition=" '$(IsDailyBuild)' == 'True' And '$(UploadProtocolWiki)' == 'True'" Command="Powershell.exe .\auto_protocol_uploader.ps1 string_parameter $(TslFullPath) daily ltt_buildbot" />
+
+    <Exec Condition=" '$(IsDailyBuild)' == 'False' And '$(UploadProtocolWiki)' == 'True'" Command="Powershell.exe .\auto_protocol_uploader.ps1 platform_gameserver $(TslFullPath) $(CCNetLabel) ltt_buildbot" />
+    <Exec Condition=" '$(IsDailyBuild)' == 'False' And '$(UploadProtocolWiki)' == 'True'" Command="Powershell.exe .\auto_protocol_uploader.ps1 string_parameter $(TslFullPath) $(CCNetLabel) ltt_buildbot" />
+  </Target>
+
+</Project>

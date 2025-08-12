@@ -1,0 +1,106 @@
+<Project DefaultTargets = "StoreSymbols" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+	<PropertyGroup>
+		<ExtensionTasksPath>$(MSBuildProjectDirectory)\Tool\MsBuild\Extension_Pack\Binaries\</ExtensionTasksPath>
+	</PropertyGroup>
+	<Import Project="Tool\MsBuild\Extension_Pack\x86\MSBuild.ExtensionPack.tasks"/>
+
+	<PropertyGroup>
+		<BuildFolder Condition=" '$(BuildFolder)' == '' ">_Package</BuildFolder>
+		<SourceFolder Condition=" '$(SourceFolder)' == '' ">Tsl</SourceFolder>
+		<BuildFullPath>$([System.IO.Path]::GetFullPath($(MSBuildProjectDirectory)))\$(BuildFolder)\</BuildFullPath>
+		<NativeFullPath>$([System.IO.Path]::GetFullPath($(SourceFolder)))</NativeFullPath>
+	</PropertyGroup>
+	
+	<PropertyGroup>
+		<P4Index>cmd.exe /c srcsrv\p4index.cmd</P4Index>
+		<P4SymStore>symstore.exe</P4SymStore>
+		<P4SymStoreOutput>\\gn-bug\symbol</P4SymStoreOutput>
+		<SymWorkPath>$(MSBuildProjectDirectory)\Tool\DebuggingToolsForWindows</SymWorkPath>
+	</PropertyGroup>
+	<PropertyGroup>
+    <P4IndexPdb>$(BuildFullPath).</P4IndexPdb>
+	</PropertyGroup>
+	
+	<PropertyGroup>
+		<PS4SymbolTempFolder>c:\ps4symbols</PS4SymbolTempFolder>
+		<StadiaSymbolTempFolder>c:\stadiasymbols</StadiaSymbolTempFolder>
+		<LinuxSymbolTempFolder>c:\linuxsymbols</LinuxSymbolTempFolder>
+		<P4RootFolder>$([System.IO.Path]::GetFullPath($(SourceFolder)\..\))</P4RootFolder>
+	</PropertyGroup>
+	
+	<!--<ItemGroup>
+		<SymServerTestFile Include="$(P4SymStoreOutput)\000Admin\history.txt" />
+	</ItemGroup>-->
+	
+ 	<!--필수 파라미터 체크-->
+	<Target Name="checkParam" >
+        <!-- <Error Text="The property 'CCNetLabel=' required" Condition="'$(CCNetLabel)'==''" /> -->
+        <Error Text="The property 'SourceFolder=' required" Condition="'$(SourceFolder)'==''" />
+    </Target>
+	
+	<!--<Target Name="checkAlive" >
+		<Message Text="SymbolServer is not Alive (cannot read file)!!!!! : %(SymServerTestFile.Identity)" Condition=" !Exists('%(SymServerTestFile.Identity)') " Importance="high" />
+	</Target>-->
+
+	<Target Name="sym_index" DependsOnTargets="checkParam" >
+		<!-- P4 정보를 읽어 PDB에 마킹 -->
+		<Exec Command="$(P4Index) /source=&quot;$(NativeFullPath)&quot; /symbols=&quot;$(P4IndexPdb)&quot; /debug"
+			  WorkingDirectory="$(SymWorkPath)" />
+	</Target>
+
+	<Target Name="StoreSymbolLocal">
+	    <Message Text="@@@@@@@@ StoreSymbolLocal @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+		<ItemGroup>
+			<Binary
+				Include="$(BuildFullPath)**\*.exe;
+					$(BuildFullPath)**\*.dll;
+					$(BuildFullPath)**\*.pdb"
+				Exclude="" />
+				
+			<Binary>
+				<Targets>RunSymStore</Targets>
+				<Properties>TargetItem=%(FullPath)</Properties>
+			</Binary>
+		</ItemGroup>
+		
+		<!-- PDB를 심볼 서버에 등록하는 것을 병렬로 돌린다. -->
+		<MSBuild.ExtensionPack.Framework.Parallel TaskAction="BuildTargetSetsInParallel" Targets="@(Binary)"/>
+	</Target>
+
+	<Target Name="StoreSymbolS3">
+	    <Message Text="@@@@@@@@ StoreSymbolS3 @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+		<Exec Command="Tool\ToolBin\SymbolTool.exe --mode=store_symbol --source=$(BuildFullPath) --target=s3://bro-crash/symbols/ -r" />
+		<Exec Command="Tool\ToolBin\SymbolTool.exe --mode=store_symbol --source=$(NativeFullPath)\Binaries\ThirdParty --target=s3://bro-crash/symbols/ -r" />
+		<!-- TslGame_Original.bak 이 존재한다는 것은 암호화가 적용되었다는 의미. 암호화가 안된 실행파일로 교체해야 함. -->
+		<Exec Command="Tool\ToolBin\SymbolTool.exe --mode=replace_symbol --source=$(BuildFullPath)\Windows\TslGame\Binaries\Win64\TslGame.exe --replacement=$(BuildFullPath)\Windows\TslGame\Binaries\Win64\TslGame_Original.bak --target=s3://bro-crash/symbols/"
+			Condition="Exists('$(BuildFullPath)\Windows\TslGame\Binaries\Win64\TslGame_Original.bak')" />
+	</Target>
+	
+    <Target Name="StoreSymbols" DependsOnTargets="sym_index" >
+		<!--<CallTarget Targets="StoreSymbolLocal" />-->
+		<CallTarget Targets="StoreSymbolS3" />
+	</Target>
+	
+	<Target Name="StoreSymbolsForLinux">
+		<Message Text="@@@@@@@@ StoreSymbolsForLinux @@@@@@@@ : not implemented yet" Importance="High" />
+	</Target>
+	
+	<Target Name="StoreSymbolsForPS4">
+		<RemoveDir Directories="$(PS4SymbolTempFolder)" ContinueOnError="WarnAndContinue"/>
+		<MakeDir Directories="$(PS4SymbolTempFolder)"/>
+		<Exec Command="powershell.exe -f symstore-ps4.ps1 -P4RootFolder $(P4RootFolder) -TargetSymbolFolder $(PS4SymbolTempFolder)"/>
+	    <Exec Command="aws s3 cp $(PS4SymbolTempFolder) s3://bro-crash/symbols/ --recursive" />
+	</Target>	
+	
+	<Target Name="StoreSymbolsForStadia">
+		<RemoveDir Directories="$(StadiaSymbolTempFolder)" ContinueOnError="WarnAndContinue"/>
+		<MakeDir Directories="$(StadiaSymbolTempFolder)"/>
+		<Exec Command="powershell.exe -f symstore-stadia.ps1 -P4RootFolder $(P4RootFolder) -TargetSymbolFolder $(StadiaSymbolTempFolder)"/>
+		<Exec Command="aws s3 cp $(StadiaSymbolTempFolder) s3://bro-crash/symbols/ --recursive" />
+	</Target>
+	
+	<Target Name="RunSymStore">
+		<Exec Command="$(P4SymStore) add /o /compress /f &quot;$(TargetItem)&quot; /s &quot;$(P4SymStoreOutput)&quot; /t BRO"
+			  WorkingDirectory="$(SymWorkPath)"/>
+	</Target>
+</Project>

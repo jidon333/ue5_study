@@ -1,0 +1,430 @@
+<!--
+Unreal Client (TsGame.exe) 를 빌드해주는 것.
+-->
+<Project DefaultTargets="" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="msb_env.xml" />
+
+  <PropertyGroup>
+    <ProjectPackageName>Windows</ProjectPackageName>
+    <ProjectPublishFolder>$(GlobalPublishFolder)\$(ProjectPackageName)</ProjectPublishFolder>
+    <ProjectPublishS3Folder>$(GlobalPublishS3Folder)/$(ProjectPackageName)</ProjectPublishS3Folder>
+    <ProjectPackageFolder>$(GlobalPackageFolder)\$(ProjectPackageName)</ProjectPackageFolder>
+	<ProjectPackageTslPakFolder>$(ProjectPackageFolder)\TslGame\Content\Paks</ProjectPackageTslPakFolder>
+    <ProjectSigningS3FilePath>$(GlobalSigningInfoFolder)/$(S3SigningFileName)</ProjectSigningS3FilePath>
+	<UseProtectingExe>False</UseProtectingExe>
+	<IncludeXenuine>False</IncludeXenuine>
+	<UseCodeSigning>True</UseCodeSigning>
+	<UseCopyingDebugInfo>False</UseCopyingDebugInfo>
+	<ExcludeDebugInfo Condition=" '$(UseCopyingDebugInfo)' == 'False' ">--exclude *.pdb --exclude *.map --exclude *.objpaths</ExcludeDebugInfo>
+	<IncludeChinaModule>False</IncludeChinaModule>
+	<ExcludeChinaModule Condition=" '$(IncludeChinaModule)' == 'False' ">--exclude *tss_sdk* --exclude *tersafe*</ExcludeChinaModule>
+	<GPUDebugSymbol>Engine\Saved\GPUDebugSymbol</GPUDebugSymbol>
+	<ExcludeGPUDebugInfo>--exclude $(GPUDebugSymbol)</ExcludeGPUDebugInfo>
+	<AdditionalExcludeArgs>$(ExcludeDebugInfo) $(ExcludeGPUDebugInfo) $(ExcludeChinaModule)</AdditionalExcludeArgs>
+    <AdditionalSkipCookParam Condition=" '$(SkipCook)' == 'True'">-skipcook</AdditionalSkipCookParam>
+	<AdditionalUpdateGlobalShaderParam Condition=" '$(UpdateGlobalShader)' == 'True'">-updateglobalshader</AdditionalUpdateGlobalShaderParam>
+	<AdditionalEnableDREDParam Condition=" '$(EnableDRED)' == 'True'">-enabledred</AdditionalEnableDREDParam>
+    <AdditionalExcludeParam Condition=" '$(ExcludedOldPaks)' != '' ">--exclude TslGame/Content/Paks/PakList.json --exclude TslGame/Content/Paks/$(ExcludedOldPaks.Replace(':', ' --exclude TslGame/Content/Paks/'))</AdditionalExcludeParam>
+	<UseConsoleCommandInShippingParam Condition=" '$(UseConsoleCommandInShipping)' == 'True' ">-UseConsoleCommandInShipping</UseConsoleCommandInShippingParam>
+    <UseMemreportInShippingParam Condition=" '$(UseMemreportInShipping)' == 'True' ">-UseMemreportInShipping</UseMemreportInShippingParam>
+    <NeedRegisterZakynthosModule>False</NeedRegisterZakynthosModule>
+	<SkipPakParam Condition=" '$(ReuseLocalPaks)' == 'True' ">-skippak</SkipPakParam>
+	<UseNameEncryptionParam Condition=" '$(UseNameEncryption)' == 'True' ">-UseNameEncryption</UseNameEncryptionParam>
+  </PropertyGroup>
+
+  <PropertyGroup>
+	<ProjectPublishS3OldFolder>$(GlobalPublishS3OldFolder)/$(ProjectPackageName)</ProjectPublishS3OldFolder>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- BP Nativization -->
+    <BPNativizationFolder>$(TslFullPath)\Intermediate\Plugins\$(ProjectPackageName)\NativizedAssets</BPNativizationFolder>
+    <BPNativizationPluginS3Folder>$(GlobalPublishS3Folder)/$(ProjectPackageName)_BPN</BPNativizationPluginS3Folder>
+    <BPNativizationPluginS3OldFolder>$(GlobalPublishS3OldFolder)/$(ProjectPackageName)_BPN</BPNativizationPluginS3OldFolder>
+  </PropertyGroup>
+  
+  <Target Name="Build_Client" DependsOnTargets="BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ Build_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <BuildItem Include="TslGame">
+        <Configuration>$(GlobalConfig)</Configuration>
+        <Platform>$(GlobalPlatform)</Platform>
+      </BuildItem>
+    </ItemGroup>
+	
+    <ItemGroup>
+      <EnginBuildItem Include="ShaderCompileWorker">
+        <Configuration>Development</Configuration>
+        <Platform>$(GlobalPlatform)</Platform>
+      </EnginBuildItem>
+    </ItemGroup>
+
+    <Exec Command="Engine\Build\BatchFiles\Build.bat %(BuildItem.Identity) %(BuildItem.Platform) %(BuildItem.Configuration) $(TslUprojFullPath) $(AllAntiCheatParams) -waitmutex $(VSVersionParam) $(DisableUnityBuild) $(UseConsoleCommandInShippingParam) $(UseMemreportInShippingParam) $(AdditionalEnableDREDParam) $(UseNameEncryptionParam)" />
+    <Exec Command="Engine\Build\BatchFiles\Build.bat %(EnginBuildItem.Identity) %(EnginBuildItem.Platform) %(EnginBuildItem.Configuration) $(AllAntiCheatParams) -waitmutex $(VSVersionParam) $(AdditionalEnableDREDParam)" />
+  </Target>
+
+  <Target Name="PackageTsl_BattlEye">
+    <Delete Files="$(GlobalPackageFolder)\Windows\TslGame\Binaries\Win64\BattlEye\BEServer_x64.dll" />
+    <Delete Files="$(GlobalPackageFolder)\Windows\TslGame\Binaries\Win64\BattlEye\BEServer_x64.cfg" />
+  </Target>
+  
+  <Target Name="PackageTsl_AceAntibot">
+    <ItemGroup>
+      <AceItem Include="Tsl\Binaries\Win64\AceAntibotClient\**\*.*">
+        <To>$(ProjectPackageFolder)\TslGame\Binaries\Win64\AceAntibotClient\</To>
+      </AceItem>
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(AceItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      ContinueOnError="WarnAndContinue"
+      />
+  </Target>
+  
+  <Target Name="PackageTsl_ExtraDLL">
+    <Copy
+      SourceFiles="$(TslFullPath)\Binaries\Win64\dbgcore.dll;$(TslFullPath)\Binaries\Win64\dbgeng.dll;$(TslFullPath)\Binaries\Win64\dbghelp.dll"
+      DestinationFolder="$(ProjectPackageFolder)\TslGame\Binaries\Win64"
+	  Condition=" '$(GlobalConfig)' == 'Development' And '$(GlobalPlatform)' == 'Win64' "
+	  ContinueOnError="WarnAndContinue"
+      />
+	<Copy
+      SourceFiles="$(ToolFullPath)\Themida\ThemidaSDK\SecureEngineSDK64.dll"
+      DestinationFolder="$(ProjectPackageFolder)\TslGame\Binaries\Win64"
+	  Condition=" '$(GlobalConfig)' == 'Development' And '$(GlobalPlatform)' == 'Win64' "
+	  ContinueOnError="WarnAndContinue"
+      />
+	<Copy
+      SourceFiles="$(ToolFullPath)\VMProtect\Lib\Windows\VMProtectSDK64.dll"
+      DestinationFolder="$(ProjectPackageFolder)\TslGame\Binaries\Win64"
+	  Condition=" '$(GlobalPlatform)' == 'Win64' And ('$(GlobalConfig)' != 'Shipping' Or ('$(GlobalConfig)' == 'Shipping' And '$(UseProtectingExe)' == 'False' )) "
+	  ContinueOnError="WarnAndContinue"
+      />
+  </Target>
+  
+  <Target Name="PackageTsl_XETE">
+	<ItemGroup>
+      <XETEItem Include="$(TslFullPath)\Binaries\Win64\XETE\*\*.*">
+	    <To>$(ProjectPackageFolder)\TslGame\Binaries\Win64\XETE</To>
+	  </XETEItem>
+    </ItemGroup>
+	
+	<Copy
+      SourceFiles="@(XETEItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+	  ContinueOnError="WarnAndContinue"
+      />
+  </Target>
+
+  <Target Name="PackageTsl_EAC">
+    <ItemGroup>
+      <EACItem Include="Tsl\Plugins\EasyAntiCheat\Resources\Distribution\Client\**\*.*">
+        <To>$(ProjectPackageFolder)\TslGame\Binaries\Win64\</To>
+      </EACItem>
+    </ItemGroup>
+
+    <Copy
+      SourceFiles="@(EACItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      ContinueOnError="WarnAndContinue"
+      />
+    <Move
+      SourceFiles="$(ProjectPackageFolder)\TslGame\Binaries\Win64\installscript.vdf"
+      DestinationFiles="$(ProjectPackageFolder)\installscript.vdf"
+      ContinueOnError="WarnAndContinue"
+      />
+  </Target>
+  
+  <Target Name="PackageTsl_ChinaPCCafe">
+	<ItemGroup>
+		<ChinaPCCafeItem Include="$(TslFullPath)\Binaries\Win64\iigw\**\*.*" />
+	</ItemGroup>
+
+	<Copy
+		SourceFiles="@(ChinaPCCafeItem)"
+		DestinationFolder="$(ProjectPackageFolder)\TslGame\Binaries\Win64\iigw\%(RecursiveDir)"
+		ContinueOnError="WarnAndContinue"
+		/>
+  </Target>
+  
+  <Target Name="PackageTsl_WinMTR">
+    <ItemGroup>
+      <WinMTRItem Include="$(TslFullPath)\Binaries\ThirdParty\WinMTR\*.*" />
+    </ItemGroup>
+    
+    <Copy
+        SourceFiles="@(WinMTRItem)"
+        DestinationFolder="$(ProjectPackageFolder)\TslGame\Binaries\ThirdParty\WinMTR\%(RecursiveDir)"
+        ContinueOnError="WarnAndContinue"
+        />
+  </Target>
+  
+  <Target Name="UnrealPackage_Client" DependsOnTargets="BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ UnrealPackage_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <!-- BEGIN: BP nativization: 기존에 생성된 generated 폴더를 지우고, 기존 package를 재활용하는 경우 S3에서 가져온다. -->
+    <RemoveDir Directories="$(BPNativizationFolder)" ContinueOnError="WarnAndContinue" 
+      Condition=" Exists($(BPNativizationFolder)) And '$(ReuseLocalPaks)' != 'True' " />
+    <MakeDir Directories="$(BPNativizationFolder)" ContinueOnError="WarnAndContinue" 
+      Condition=" $(EnableBPNativization) And '$(ReusedOldVersion)' != '' And '$(ReuseLocalPaks)' != 'True' "/>
+    <Exec
+      Command="aws s3 cp $(BPNativizationPluginS3OldFolder) $(BPNativizationFolder)/ $(GlobalPublishS3Option) --no-progress --recursive"
+      Condition=" $(EnableBPNativization) And '$(ReusedOldVersion)' != '' And '$(ReuseLocalPaks)' != 'True' "
+      />
+    <!-- END: BP nativization -->
+
+    <CallTarget Targets="ClearOnBranchChange"/>
+	
+	<Exec
+		Command="msbuild_run.bat msb_main_editor.xml /p:GlobalConfig=Development /p:UseNameEncryption=$(UseNameEncryption) /t:Build_Editor"
+	/>
+			
+	<Exec
+		Command="RunUAT.bat BuildCookRun $(DefaultPackageArgument) -cookincremental -buildmachine -stats -trace=default,cook -tracefile=&quot;$(ProjectPackageFolder)\Cook_%CCNetLabel%.utrace&quot; -UTF8Output $(MapParam) $(VSVersionParam) $(AllAntiCheatParams) $(AdditionalSkipCookParam) $(AdditionalUpdateGlobalShaderParam) $(AdditionalEnableDREDParam) $(UseConsoleCommandInShippingParam) $(UseMemreportInShippingParam) $(SkipPakParam) -additionalcookeroptions=&quot;$(CookProcessCountParam)&quot; $(UseNameEncryptionParam)"
+		WorkingDirectory="Engine\Build\BatchFiles"
+	/>
+
+	<PropertyGroup>
+	  <PakListJsonNew>$(ProjectPackageTslPakFolder)/PakList.json</PakListJsonNew>
+	  <PakListJsonOld>$(ProjectPackageTslPakFolder)/PakList_old.json</PakListJsonOld>
+	</PropertyGroup>
+	<Exec Command="aws s3 cp $(ProjectPublishS3OldFolder)/TslGame/Content/Paks/PakList.json $(PakListJsonOld) $(GlobalPublishS3Option)"
+	  Condition=" '$(ReusedOldVersion)' != '' And '$(ReuseLocalPaks)' != 'True' "
+	  />
+		
+	<Exec command="Powershell.exe .\paklist_pak_removed.ps1 $(PakListJsonNew) $(PakListJsonOld)"
+	  ConsoleToMSBuild="true"
+	  Condition=" '$(ReusedOldVersion)' != '' And '$(ReuseLocalPaks)' != 'True' ">
+	  <Output TaskParameter="ConsoleOutput" PropertyName="RemovedPaks" />
+	</Exec>
+	<Message Text="RemovedPaks = $(RemovedPaks)" Importance="High" />
+	
+	<Delete Files="$(PakListJsonOld)" />
+	
+	<PropertyGroup>
+	  <RemovedPakExcludeParam Condition=" '$(ExcludedOldPaks)' != '' And '$(RemovedPaks)' != '' ">--exclude TslGame/Content/Paks/$(RemovedPaks.Replace(':', ' --exclude TslGame/Content/Paks/'))</RemovedPakExcludeParam>
+	</PropertyGroup>
+  
+    <Exec
+      Command="aws s3 cp $(ProjectPublishS3OldFolder) $(ProjectPackageFolder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude TslGame/Binaries* --exclude Engine/Binaries* --exclude TslGame/Content/Movies* --exclude TslGame/Content/Splash* $(AdditionalExcludeParam) $(RemovedPakExcludeParam)"
+      Condition=" '$(ReusedOldVersion)' != '' And '$(ReuseLocalPaks)' != 'True' "
+      />
+	
+    <CallTarget Targets="PackageTsl_BattlEye" />
+    <CallTarget Targets="PackageTsl_AceAntibot" />
+	<CallTarget Targets="PackageTsl_ExtraDLL" />
+	<CallTarget Targets="PackageTsl_XETE" />
+	<CallTarget Targets="PackageTsl_ChinaPCCafe" />
+    <CallTarget Targets="PackageTsl_WinMTR" />
+  </Target>
+
+<Target Name="RebuildHLODs_Client" DependsOnTargets="CheckP4Config;BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ RebuildHLODs_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <!-- <CallTarget Targets="ClearOnBranchChange"/> -->
+	
+    <Exec
+      Command="msbuild_run.bat msb_main_editor.xml /p:GlobalConfig=Development /p:UseNameEncryption=$(UseNameEncryption) /t:Build_Editor"
+    />
+
+    <Exec
+      Command="RunUAT.bat BuildGraph $(RebuildHLODsArgument)"
+      WorkingDirectory="Engine\Build\BatchFiles"
+      />
+
+  </Target>
+
+  <Target Name="CopyCustomPacakgeFiles_Client" DependsOnTargets="">
+    <Message Text="@@@@@@@@ CopyCustomPacakgeFiles_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <EtcCopyItem Include="Tsl\Binaries\ThirdParty\BroCrashReporter\**\*.*" 
+        Exclude="Tsl\Binaries\ThirdParty\BroCrashReporter\*.pdb;Tsl\Binaries\ThirdParty\BroCrashReporter\*.vshost.*" >
+        <To>$(ProjectPackageFolder)\TslGame\Binaries\ThirdParty\BroCrashReporter</To>
+      </EtcCopyItem>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(EtcCopyItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      SkipUnchangedFiles="True" />
+  </Target>
+
+  <Target Name="Package_Client" DependsOnTargets="BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ Package_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <RemoveDir Condition=" '$(IncrementalCookParam)' != '-iterate' " Directories="$(TslFullPath)\Saved\Cooked\$(ProjectPackageName)" ContinueOnError="WarnAndContinue"/>
+    <RemoveDir Directories="$(TslFullPath)\Saved\StagedBuilds\$(ProjectPackageName)" ContinueOnError="WarnAndContinue"/>
+
+    <CallTarget Targets="UnrealPackage_Client"/>
+
+    <CallTarget Targets="CopyCustomPacakgeFiles_Client"/>
+  </Target>
+  
+   <Target Name="GenerateHashListFromGameFiles" DependsOnTargets="CheckLabel;BuildTsl_prepare;Package_Client;CodeSigning" >
+    <Message Text="@@@@@@@@ GenerateHashListFromGameFiles @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+	 <Exec Command="Powershell.exe -File get_hash_from_game_files.ps1" />
+  </Target>
+  
+  <Target Name="CleanPackage_Client" DependsOnTargets="CheckProperty" >
+    <Message Text="@@@@@@@@ CleanPackage_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <PackageFolder Include="$(ProjectPackageFolder)" />
+    </ItemGroup>
+
+    <RemoveDir Directories="@(PackageFolder)" ContinueOnError="WarnAndContinue" Condition=" '$(ReuseLocalPaks)' != 'True' " />
+  </Target>
+
+  <Target Name="CleanPublish_Client" DependsOnTargets="CheckLabel">
+    <Message Text="@@@@@@@@ CleanPublish_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <RemoveDir Directories="$(ProjectPublishFolder)"  ContinueOnError="WarnAndContinue"/>
+    <MakeDir Directories="$(ProjectPublishFolder)"/>
+  </Target>
+
+  <ItemGroup>
+    <ProtectFolder Include="ProtectFolder">
+      <Exe>$(ProjectPackageFolder)\TslGame\Binaries\Win64</Exe>
+	  <Pak>$(ProjectPackageFolder)\TslGame\Content\Paks</Pak>
+	</ProtectFolder>
+  </ItemGroup>
+  <Target Name="ProtectExe" DependsOnTargets="">
+	<Message TEXT="@@@@@@@@ Protect Exe @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+	
+	<Exec Command="$(ProtectExeVMProtectBatchFilePath) %(ProtectFolder.Exe)"
+	  ContinueOnError="False"
+	  Condition=" '$(GlobalConfig)' == 'Shipping' And '$(GlobalPlatform)' == 'Win64' And '$(UseProtectingExe)' == 'True'"/>
+	<Delete Files="%(ProtectFolder.Exe)\TslGame.exe.vmp" />
+	<Exec Command="$(ProtectExeXenuineBatchFilePath) %(ProtectFolder.Exe) %(ProtectFolder.Pak)" 
+	  ContinueOnError="False"
+	  Condition=" '$(GlobalConfig)' == 'Shipping' And '$(GlobalPlatform)' == 'Win64' And '$(IncludeXenuine)' == 'True'"/>
+	<Copy SourceFiles="$(TslFullPath)\Binaries\Win64\ExecPubg.exe" DestinationFolder="%(ProtectFolder.Exe)"
+	  Condition=" '$(GlobalConfig)' == 'Shipping' And '$(GlobalPlatform)' == 'Win64' "/>
+  </Target>
+  
+  <Target Name="CodeSigning" DependsOnTargets="">
+    <Message Text="@@@@@@@@ CodeSigning @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <!-- 기존에 생성된 SigningInfo 파일 삭제-->
+    <Delete Files="$(SignedFileInfoFilePath)" ContinueOnError="True" Condition=" '$(UseCodeSigning)' == 'True' "/>
+
+    <ItemGroup>
+      <SignItem Include="$(ProjectPackageFolder)\TslGame\Binaries\Win64\TslGame.exe" />
+      <SignItem Include="$(ProjectPackageFolder)\TslGame\Binaries\Win64\TslGame_Security.dat" />
+      <SignItem Include="$(ProjectPackageFolder)\TslGame\Binaries\Win64\TslGame_Compatibility.dat" />
+	  <!-- SimpleWebBrowser -->
+	  <SignItem Include="$(ProjectPackageFolder)\Engine\Binaries\ThirdParty\CEF3\Win64\libcef.dll" />
+	  <SignItem Include="$(ProjectPackageFolder)\Engine\Binaries\ThirdParty\CEF3\Win64\libEGL.dll" />
+	  <SignItem Include="$(ProjectPackageFolder)\Engine\Binaries\ThirdParty\CEF3\Win64\libGLESv2.dll" />
+	  <SignItem Include="$(ProjectPackageFolder)\Engine\Binaries\Win64\UnrealCEFSubProcess.exe" />
+    </ItemGroup>
+    <Exec Command="powershell .\codesigning_and_make_signing_info_file.ps1 $(CodeSigningBatchFilePath) &quot;%(SignItem.Identity)&quot; $(SignedFileInfoFilePath)" 
+                  ContinueOnError="False"
+                  Condition=" '$(UseCodeSigning)' == 'True' "/>
+
+    <Error Condition=" '$(UseCodeSigning)' == 'True' And Exists('$(SignedFileInfoFilePath)') == 'False' " Text="Signing info file not generated."
+                  ContinueOnError="False"/> 
+    
+    <Exec Command="aws s3 cp $(SignedFileInfoFilePath) $(ProjectSigningS3FilePath) $(GlobalPublishS3Option) --no-progress" 
+                  ContinueOnError="WarnAndContinue"
+                  Condition=" '$(UseCodeSigning)' == 'True' And Exists('$(SignedFileInfoFilePath)')"/>
+  </Target>
+
+  <Target Name="PublishCopy_Client" DependsOnTargets="CheckLabel;CleanPublish_Client;ProtectExe;CodeSigning">
+    <Message Text="@@@@@@@@ PublishCopy_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <ItemGroup>
+      <CopyItem Include="$(ProjectPackageFolder)\Engine\**\*.*" 
+          Exclude="$(ProjectPackageFolder)\Engine\**\*.pdb;$(ProjectPackageFolder)\$(GPUDebugSymbol)">
+        <To>$(ProjectPublishFolder)\Engine</To>
+      </CopyItem>
+      <CopyItem Include="$(ProjectPackageFolder)\TslGame\**\*.*" 
+          Exclude="$(ProjectPackageFolder)\TslGame\**\*.pdb">
+        <To>$(ProjectPublishFolder)\TslGame</To>
+      </CopyItem>
+      <CopyItem Include="$(ProjectPackageFolder)\*.*" >
+        <To>$(ProjectPublishFolder)</To>
+      </CopyItem>
+
+      <!-- 각종 bat,ps1 파일은 클라이언트 publish에서 처리해준다. -->
+      <CopyItem Include="$(GlobalPackageFolder)\*.bat" >
+        <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+      <CopyItem Include="$(GlobalPackageFolder)\*.ps1" >
+        <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+        <CopyItem Include="$(GlobalPackageFolder)\BuildLauncher.*" >
+        <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+      <CopyItem Include="$(GlobalPackageFolder)\BroLauncher.*" >
+          <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+      <CopyItem Include="$(GlobalPackageFolder)\BroMultipleLauncher.*" >
+        <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+      <CopyItem Include="$(GlobalPackageFolder)\CollectBudgetClientData.*" >
+        <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+	    <CopyItem Include="$(GlobalPackageFolder)\z_dump_uploader\**\*.*"
+	      Exclude="$(GlobalPackageFolder)\z_dump_uploader\**\*.pdb">
+		    <To>$(GlobalPublishFolder)</To>
+	    </CopyItem>
+      <CopyItem Include="$(GlobalPackageFolder)\z_logmonitor\**\*.*"
+	      Exclude="$(GlobalPackageFolder)\z_logmonitor\**\*.pdb">
+		    <To>$(GlobalPublishFolder)</To>
+	    </CopyItem>
+      <CopyItem Include="$(GlobalPackageFolder)\BuildProps\Windows.json">
+        <To>$(GlobalPublishFolder)</To>
+      </CopyItem>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(CopyItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      SkipUnchangedFiles="True"
+      UseHardlinksIfPossible="True"
+      />
+  </Target>
+
+  <Target Name="CleanPublishS3_Client" DependsOnTargets="CheckLabel;BuildTsl_prepare">
+    <Message Text="@@@@@@@@ CleanPublishS3_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="aws s3 rm $(ProjectPublishS3Folder)/ $(GlobalPublishS3Option) --recursive" />
+    <Exec Command="aws s3 rm $(BPNativizationPluginS3Folder)/ $(GlobalPublishS3Option) --recursive" />
+  </Target>
+
+  <Target Name="PublishCopyS3_Client" DependsOnTargets="CheckLabel;BuildTsl_prepare;CleanPublishS3_Client;ProtectExe;CodeSigning;GenerateHashListFromGameFiles">
+    <Message Text="@@@@@@@@ PublishCopyS3_Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <Exec Command="aws s3 cp $(ProjectPackageFolder) $(ProjectPublishS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude TslGame/Saved* --exclude *.log --exclude *.bak --exclude Manifest_DebugFiles_Win64.txt --exclude Manifest_NonUFSFiles_Win64.txt --exclude *.metadata $(AdditionalExcludeArgs)" />
+
+    <!-- 각종 bat,ps1 파일은 클라이언트 publish에서 처리해준다. -->
+    <Exec Command="aws s3 cp $(GlobalPackageFolder) $(GlobalPublishS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude * --include *.bat --include BuildLauncher.* --include BroLauncher.* --include BroMultipleLauncher.* --include z_dump_uploader/* --include z_logmonitor/* --include CollectBudgetClientData.* --include BuildProps/*.json --include *.ps1 " />
+    <Exec Command="aws s3 cp $(GlobalPackageFolder) $(GlobalBakS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude *.* --include *.pdb --include *.map --include *.objpaths --include *.bak --include *.log --include Manifest_DebugFiles_Win64.txt --include Manifest_NonUFSFiles_Win64.txt --include *.metadata" />
+
+    <Exec 
+      Command="aws s3 cp $(BPNativizationFolder) $(BPNativizationPluginS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude Binaries/* --exclude Intermediate/*" 
+      Condition="$(EnableBPNativization)" />
+  </Target>
+
+  <Target Name="Publish_Client" DependsOnTargets="CheckLabel">
+    <CallTarget Targets="CleanPackage_Client;Package_Client"/>
+    <CallTarget Targets="PublishCopy_Client"/>
+  </Target>
+
+  <Target Name="PublishS3_Client" DependsOnTargets="CheckLabel">
+    <CallTarget Targets="CleanPackage_Client;Package_Client"/>
+    <CallTarget Targets="PublishCopyS3_Client"/>
+    <CallTarget Targets="RegisterZakynthosModule" Condition=" '$(GlobalConfig)' == 'Shipping' And '$(GlobalPlatform)' == 'Win64' And '$(UseAntiCheat)' == 'True' And '$(NeedRegisterZakynthosModule)' == 'True' " />
+  </Target>
+  
+  <Target Name="UploadToSteam" DependsOnTargets="CheckLabel">
+	<Message Text="@@@@@@@@ UPLOAD BUILD TO STEAM @@@@@@@@" Importance="High" />
+    <Exec Command="Powershell.exe -File auto_upload_to_steam.ps1 -Version $(CCNetLabel) -ToolPath $(ToolFullPath)" />
+  </Target>
+
+  <Target Name="UploadProtocolToWiki" DependsOnTargets="CheckLabel" >
+    <Message Text="@@@@@@@@ Update_Protocol_Wiki @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Condition=" '$(IsDailyBuild)' == 'True' And '$(UploadProtocolWiki)' == 'True'" Command="Powershell.exe .\auto_protocol_uploader.ps1 lobby_gameclient $(TslFullPath) daily ltt_buildbot" />
+    <Exec Condition=" '$(IsDailyBuild)' == 'False' And '$(UploadProtocolWiki)' == 'True'" Command="Powershell.exe .\auto_protocol_uploader.ps1 lobby_gameclient $(TslFullPath) $(CCNetLabel) ltt_buildbot" />
+  </Target>
+ 
+  <Target Name="RegisterZakynthosModule" DependsOnTargets="CheckLabel">
+    <Message Text="######## REGISTER ZAKYNTHOS MODULE ########" Importance="High" />
+    <Exec Command="Powershell.exe .\trigger_zakynthos.ps1 '$(CCNetLabel)' '$(Branch)'" />
+  </Target>
+</Project>

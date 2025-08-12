@@ -1,0 +1,250 @@
+<Project DefaultTargets = "" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <GlobalPackageFolder Condition=" '$(GlobalPackageFolder)' == '' ">$(MSBuildProjectDirectory)\_Package</GlobalPackageFolder>
+    <S3Label Condition=" '$(S3Label)' == '' ">$([System.DateTime]::Now.ToString('yyyy.MM.dd.HHmm'))</S3Label>
+    <!--<S3Label>2016.02.12.1442</S3Label>-->
+
+    <ZipCommand>$(MSBuildProjectDirectory)\Tool\Bin\7z.exe</ZipCommand>
+    <S3CopyCommand>aws s3 cp</S3CopyCommand>
+  </PropertyGroup>
+
+  <Target Name="MakeItem_Server">
+    <ItemGroup>
+      <UploadItem Include="$(S3Label)_WindowsServer.zip">
+        <SubFolder>-r WindowsServer</SubFolder>
+        <FilenameTxt>LastServerFilename.txt</FilenameTxt>
+      </UploadItem>
+    </ItemGroup>
+
+    <ItemGroup>
+	  <S3Uri Include="s3://pubg-gameserver-ap-northeast-2/gameserver_ue5/">
+	    <Profile>pubg-dev</Profile>
+		<S3Region>ap-northeast-2</S3Region>
+	  </S3Uri>
+    </ItemGroup>
+  </Target>
+  
+    <Target Name="MakeItem_Server_Linux">
+    <ItemGroup>
+      <UploadItem Include="$(S3Label)_LinuxServer.zip">
+        <SubFolder>-r LinuxServer</SubFolder>
+        <FilenameTxt>LastServerFilename.txt</FilenameTxt>
+      </UploadItem>
+    </ItemGroup>
+
+    <ItemGroup>
+	  <S3Uri Include="s3://pubg-gameserver-ap-northeast-2/gameserver_ue5/">
+	    <Profile>pubg-dev</Profile>
+		<S3Region>ap-northeast-2</S3Region>
+	  </S3Uri>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="MakeItem_Client">
+    <ItemGroup>
+      <UploadItem Include="$(S3Label)_WindowsNoEditor.zip">
+        <SubFolder>-r WindowsNoEditor</SubFolder>
+        <FilenameTxt>LastClientFilename.txt</FilenameTxt>
+        <S3Name>$(S3Label)_WindowsClient.zip</S3Name>
+      </UploadItem>
+      <UploadItem Include="$(S3Label)_Helper.zip">
+        <Filenames>*.exe *.config *.bat</Filenames>
+        <FilenameTxt>LastHelperFilename.txt</FilenameTxt>
+      </UploadItem>
+    </ItemGroup>
+
+    <ItemGroup>
+      <S3Uri Include="s3://tsl-ko/">
+        <Profile>&quot;&quot;</Profile>
+        <S3Region>ap-northeast-2</S3Region>
+      </S3Uri>
+      <S3Uri Include="s3://prod-bro-gameserver/gameclient/">
+        <Profile>bro-dev</Profile>
+        <S3Region>ap-northeast-2</S3Region>
+      </S3Uri>
+    </ItemGroup>
+  </Target>
+  
+  <UsingTask TaskName="ParseMapNames" TaskFactory="CodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <PackagingMaps ParameterType="System.String" Required="true" />
+      <Result ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System"/>
+      <Using Namespace="System.Collections.Generic"/>
+      <Using Namespace="System.IO"/>
+      <Using Namespace="System.Text.RegularExpressions"/>
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        try{
+            List<string> maps = new List<string>();
+            var mapPattern = new Regex(@"([a-zA-Z0-9/_]+)\+?");
+            var mainMapPattern = @"([a-z0-9]+)_main";
+            foreach (Match m in mapPattern.Matches(PackagingMaps))
+            {
+                var mapPath = m.Groups[1].Value;
+                var temp = mapPath.Split('/');
+                var mapName = temp[temp.Length-1];
+                var matchMapIsMain = Regex.Match(mapName, mainMapPattern, RegexOptions.IgnoreCase);
+                if (matchMapIsMain.Success)
+                {
+                    Console.WriteLine("Found");
+                    mapName = matchMapIsMain.Groups[1].Value;
+                }
+                maps.Add(mapName);
+            }
+            Result = string.Join(",", maps);
+        } catch( Exception ex )
+        {
+          Log.LogError(string.Format("Failed to parse map name: {0}", PackagingMaps));
+        }
+]]>   </Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="MakeItem_Client_XboxOne">
+    <ItemGroup>
+      <UploadItem Include="$(S3Label)_XboxOne.zip">
+        <SubFolder>-r XboxOne</SubFolder>
+        <FilenameTxt>LastClientFilename.txt</FilenameTxt>
+        <S3Name>$(S3Label)_XboxOne.zip</S3Name>
+      </UploadItem>
+    </ItemGroup>
+
+    <ItemGroup>
+      <S3Uri Include="s3://tsl-ko/">
+        <Profile>&quot;&quot;</Profile>
+        <S3Region>ap-northeast-2</S3Region>
+      </S3Uri>
+      <S3Uri Include="s3://prod-bro-gameserver/xboxone/">
+        <Profile>bro-dev</Profile>
+        <S3Region>ap-northeast-2</S3Region>
+      </S3Uri>
+    </ItemGroup>
+  </Target>
+  
+  <Target Name="MakeItem_Client_PS4">
+    <ItemGroup>
+      <UploadItem Include="$(S3Label)_PS4.zip">
+        <SubFolder>-r PS4</SubFolder>
+        <FilenameTxt>LastClientFilename.txt</FilenameTxt>
+        <S3Name>$(S3Label)_PS4.zip</S3Name>
+      </UploadItem>
+    </ItemGroup>
+
+    <ItemGroup>
+      <S3Uri Include="s3://tsl-ko/">
+        <Profile>&quot;&quot;</Profile>
+        <S3Region>ap-northeast-2</S3Region>
+      </S3Uri>
+      <S3Uri Include="s3://prod-bro-gameserver/ps4/">
+        <Profile>bro-dev</Profile>
+        <S3Region>ap-northeast-2</S3Region>
+      </S3Uri>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="MakeItem_Editor">
+    <ItemGroup>
+      <UploadItem Include="$(S3Label)_WindowsEditor.zip">
+        <SubFolder>-r WindowsEditor</SubFolder>
+        <FilenameTxt>LastEditorFilename.txt</FilenameTxt>
+      </UploadItem>
+    </ItemGroup>
+    <ItemGroup>
+      <S3Uri Include="s3://bro-unreal-editor-seoul/">
+        <Profile>&quot;&quot;</Profile>
+        <S3Region>ap-northeast-2</S3Region>
+      </S3Uri>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="MakeS3Item">
+    <CreateItem Include="@(S3Uri)" AdditionalMetadata="UploadItem=%(UploadItem.Identity);S3Name=%(UploadItem.S3Name)">
+      <Output ItemName="S3Item" TaskParameter="Include"/>
+    </CreateItem>
+  </Target>
+
+  <Target Name="CleanCompressedPackage" DependsOnTargets="">
+    <Message Text="@@@@@@@@ CleanCompressedPackage @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <CompressedPackage Include="$(GlobalPackageFolder)\*.zip" />
+      <CompressedPackage Include="$(GlobalPackageFolder)\*.zip.tmp" />
+    </ItemGroup>
+    <Delete Files="@(CompressedPackage)" ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <Target Name="CompressPackage" DependsOnTargets="">
+    <Message Text="@@@@@@@@ CompressPackage @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec
+      Command="$(ZipCommand) a %(UploadItem.Identity) %(UploadItem.SubFolder) %(UploadItem.Filenames) -mx0 -xr!*.pdb"
+      WorkingDirectory="$(GlobalPackageFolder)"
+      />
+    <WriteLinesToFile
+      File="$(GlobalPackageFolder)\%(UploadItem.FilenameTxt)"
+      Lines="%(UploadItem.Identity)"
+      Overwrite="true"
+      />
+  </Target>
+
+  <Target Name="UploadPackageToS3" DependsOnTargets="">
+    <Message Text="@@@@@@@@ UploadPackageToS3 @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <!--<Message Text="* up: %(S3Item.Identity)  %(S3Item.Profile) %(S3Item.UploadItem) %(S3Item.S3Name)" Importance="High" />-->
+    <Exec
+      Command="$(S3CopyCommand) %(S3Item.UploadItem) %(S3Item.Identity)%(S3Item.S3Name) --no-progress --profile %(S3Item.Profile) --region %(S3Item.S3Region)"
+      WorkingDirectory="$(GlobalPackageFolder)"
+      />
+  </Target>
+
+  <Target Name="UploadBatchFilesToS3" DependsOnTargets="">
+    <Message Text="@@@@@@@@ UploadBatchFilesToS3 @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec
+      Command="$(S3CopyCommand) . s3://tsl-batch-files-ko/ --recursive --exclude * --include *.bat --no-progress --region ap-northeast-2"
+      WorkingDirectory="$(GlobalPackageFolder)"
+      />
+  </Target>
+
+  <Target Name="Publish_DockerImage" DependsOnTargets="">
+    <ParseMapNames PackagingMaps="$(PackagingMap)">
+      <Output PropertyName="PackagedMaps" TaskParameter="Result" />
+    </ParseMapNames>
+    <PropertyGroup>
+      <PublishURI> 'https://jenkins-eks.pubg.io/buildByToken/buildWithParameters?job=bro/dedi-server-docker-ue5"%26"token=DGXZDG1KZG46CMXHDGTKCMJZ"%26"version=$(S3Label)"%26"map=$(PackagedMaps)"%26"delay=5sec'</PublishURI>
+	  <SecurityProtocol> [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12</SecurityProtocol>
+    </PropertyGroup>
+    <Exec Command="Powershell.exe -Command $(SecurityProtocol); Invoke-WebRequest -Uri $(PublishURI) -Method Get" />
+  </Target>
+
+  <!-- Item들을 만들어내는 Target을 분리한 것은, 
+  이렇게 분리해 DependsOnTargets으로 묶어주면 CallTarget에서 받은 Task에서 사용할 수 있기 때문이다. -->
+  <Target Name="Server" DependsOnTargets="MakeItem_Server;MakeS3Item">
+    <Message Text="@@@@@@@@ Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <CallTarget Targets="CleanCompressedPackage;CompressPackage;UploadPackageToS3;Publish_DockerImage" />
+  </Target>
+  
+  <Target Name="Server_Linux" DependsOnTargets="MakeItem_Server_Linux;MakeS3Item">
+    <Message Text="@@@@@@@@ Server @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <CallTarget Targets="CleanCompressedPackage;CompressPackage;UploadPackageToS3;Publish_DockerImage" />
+  </Target>
+
+  <Target Name="Client_XboxOne" DependsOnTargets="MakeItem_Client_XboxOne;MakeS3Item">
+    <Message Text="@@@@@@@@ Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <!-- <CallTarget Targets="CleanCompressedPackage;CompressPackage;UploadPackageToS3"/> -->
+  </Target>
+  
+  <Target Name="Client_PS4" DependsOnTargets="MakeItem_Client_PS4;MakeS3Item">
+    <Message Text="@@@@@@@@ Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <!-- <CallTarget Targets="CleanCompressedPackage;CompressPackage;UploadPackageToS3"/> -->
+  </Target>
+
+  <Target Name="Client" DependsOnTargets="MakeItem_Client;MakeS3Item">
+    <Message Text="@@@@@@@@ Client @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <!-- <CallTarget Targets="CleanCompressedPackage;CompressPackage;UploadPackageToS3"/> -->
+    <!-- <CallTarget Targets="UploadBatchFilesToS3"/> -->
+  </Target>
+
+  <Target Name="Editor" DependsOnTargets="MakeItem_Editor;MakeS3Item">
+    <Message Text="@@@@@@@@ Editor @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <CallTarget Targets="CleanCompressedPackage;CompressPackage;UploadPackageToS3" />
+  </Target>
+</Project>

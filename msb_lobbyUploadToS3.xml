@@ -1,0 +1,63 @@
+<Project DefaultTargets = "StoreSymbols" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+	<GlobalPackageFolder Condition=" '$(GlobalPackageFolder)' == '' ">$(MSBuildProjectDirectory)\_Package</GlobalPackageFolder>
+	
+    <S3Label>$([System.DateTime]::Now.ToString('yyyy.MM.dd.HHmm'))</S3Label>
+    <!--<S3Label>2016.02.12.1442</S3Label>-->
+    <S3LobbyFilename>bro-server.zip</S3LobbyFilename>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <UploadItem Include="bro-server.zip">
+      <SubFolder>-r Lobby</SubFolder>
+    </UploadItem>
+  </ItemGroup>
+
+  <Target Name="AppSettingCopy" DependsOnTargets="">
+    <Message Text="@@@@@@@@ AppSettingCopy @@@@@@@@ : $(GlobalPackageFolder) $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <CopyItem Include="server\HE5\Helical\Devfiles\packer\provisioners\appsettings.json" >
+        <To>$(GlobalPackageFolder)\lobby</To>
+      </CopyItem>
+    </ItemGroup>
+    <Copy SourceFiles="@(CopyItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      SkipUnchangedFiles="False" />
+  </Target>
+
+  <Target Name="CleanCompressedPackage" DependsOnTargets="">
+    <Message Text="@@@@@@@@ CleanCompressedPackage @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <CompressedPackage Include="$(GlobalPackageFolder)\*.zip" />
+      <CompressedPackage Include="$(GlobalPackageFolder)\*.zip.tmp" />
+    </ItemGroup>
+    <Delete Files="@(CompressedPackage)" ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <Target Name="CompressPackage" DependsOnTargets="">
+    <Message Text="@@@@@@@@ CompressPackage @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <PropertyGroup>
+      <ZipCommand>$(MSBuildProjectDirectory)\Tool\Bin\7z.exe</ZipCommand>
+    </PropertyGroup>
+    <Exec
+      Command="$(ZipCommand) a %(UploadItem.Identity) %(UploadItem.SubFolder) %(UploadItem.Filenames) -xr!*.log"
+      WorkingDirectory="$(GlobalPackageFolder)"
+      />
+  </Target>
+
+  <Target Name="UploadPackageToS3" DependsOnTargets="">
+    <Message Text="@@@@@@@@ UploadPackageToS3 @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <PropertyGroup>
+      <S3CopyCommand>aws s3 cp</S3CopyCommand>
+      <S3Uri>s3://bro-server/</S3Uri>
+    </PropertyGroup>
+    <Exec
+      Command="$(S3CopyCommand) %(UploadItem.Identity) $(S3Uri)"
+      WorkingDirectory="$(GlobalPackageFolder)"
+      />
+  </Target>
+
+  <Target Name="LobbyUploadToS3" DependsOnTargets="AppSettingCopy;CleanCompressedPackage;CompressPackage;UploadPackageToS3">
+    <Message Text="@@@@@@@@ UploadToS3 @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+  </Target>
+</Project>

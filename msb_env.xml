@@ -1,0 +1,441 @@
+<!-- 
+전체 환경 설정을 담당하는 msbuild project 
+모든 msbuild 프로젝트에서 공용으로 사용하는 property와 공용 task들이 담겨 있다.
+-->
+<Project DefaultTargets="" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ExtensionTasksPath>$(MSBuildProjectDirectory)\Tool\MsBuild\Extension_Pack\Binaries\</ExtensionTasksPath>
+  </PropertyGroup>
+  <Import Project="Tool\MsBuild\Extension_Pack\x86\MSBuild.ExtensionPack.tasks"/>
+
+  <PropertyGroup>
+    <!-- 이 빌드파일의 입력에 대한 검사를 위해서 사용하는 property들 -->
+    <GlobalConfigSet>Debug;Development;Shipping;Test</GlobalConfigSet>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <CCNetLabel Condition=" '$(CCNetLabel)' == '' ">0.0.0.2</CCNetLabel>
+    <VersionDigit0>$(CCNetLabel.Split('.')[0])</VersionDigit0>
+    <VersionDigit1>$(CCNetLabel.Split('.')[1])</VersionDigit1>
+    <VersionDigit2>$(CCNetLabel.Split('.')[2])</VersionDigit2>
+    <VersionDigit3>$(CCNetLabel.Split('.')[3])</VersionDigit3>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <cred_id>none</cred_id>
+    <cred_pw>none</cred_pw>
+  </PropertyGroup>
+
+  <PropertyGroup>
+	  <Branch></Branch>
+    <GlobalConfig Condition=" '$(GlobalConfig)' == '' ">Development</GlobalConfig>
+    <GlobalPlatform>Win64</GlobalPlatform>
+    <ProjectPlatform>x64</ProjectPlatform>
+    <VSVersionParam>-2022</VSVersionParam>
+    <GlobalPackageFolder Condition=" '$(GlobalPackageFolder)' == '' ">$(MSBuildProjectDirectory)\_Package</GlobalPackageFolder>
+    <ForceDisableBPNativization Condition=" '$(ForceDisableBPNativization)' == '' ">False</ForceDisableBPNativization>
+
+    <!-- BuildTsl_prepare task에서 DefaultGame.ini값과 ForceDisableBPNativization 값으로 재계산된다. -->
+    <EnableBPNativization>False</EnableBPNativization>
+	
+	<IsDailyBuild>False</IsDailyBuild>
+	<IterativeCookingOption>None</IterativeCookingOption>
+	<IncrementalCookParam></IncrementalCookParam>
+	<IncrementalCookParam Condition=" '$(IterativeCookingOption)' == 'IterativeCooking' And '$(GlobalConfig)' == 'Development'">-iterate</IncrementalCookParam>
+	<CookProcessCountParam Condition="'$(CookProcessCount)' != ''"> -CookProcessCount=$(CookProcessCount) </CookProcessCountParam>
+  
+<ProfileGuidedOption>None</ProfileGuidedOption>
+    <ProfileGuidedParam Condition=" '$(ProfileGuidedOption)' == 'None' "></ProfileGuidedParam>
+    <ProfileGuidedParam Condition=" '$(ProfileGuidedOption)' == 'Instrument' ">-pginstrument</ProfileGuidedParam>
+    <ProfileGuidedParam Condition=" '$(ProfileGuidedOption)' == 'Update' ">-pgupdate</ProfileGuidedParam>
+  </PropertyGroup>
+  
+  <!-- UseUnityBuild -->
+  <PropertyGroup>
+    <UseUnityBuild>True</UseUnityBuild>
+    <DisableUnityBuild></DisableUnityBuild>
+  </PropertyGroup>
+  <Choose>
+    <When Condition=" '$(UseUnityBuild)' == 'False' ">
+      <PropertyGroup>
+        <DisableUnityBuild>-DisableUnity</DisableUnityBuild>
+      </PropertyGroup>
+    </When>
+  </Choose>
+  <!-- UseUnityBuild -->
+  
+  <PropertyGroup>
+    <EngineFullPath>$([System.IO.Path]::GetFullPath('Engine'))</EngineFullPath>
+    <TslFullPath>$([System.IO.Path]::GetFullPath('Tsl'))</TslFullPath>
+	  <ToolFullPath>$([System.IO.Path]::GetFullPath('Tool'))</ToolFullPath>
+    <TslUprojectName>TslGame.uproject</TslUprojectName>
+    <TslUprojFullPath>$(TslFullPath)\$(TslUprojectName)</TslUprojFullPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <GlobalPublishFolder>\\gn-dist\tsl\$(Branch)\$(CCNetLabel)</GlobalPublishFolder>
+    <!-- <CodeSigningBatchFilePath>..\CodeSigningCertificates\CodeSigning.bat</CodeSigningBatchFilePath> -->
+	  <ProtectExeVMProtectBatchFilePath>protect_exe_vmprotect.bat</ProtectExeVMProtectBatchFilePath>
+	  <ProtectExeThemidaBatchFilePath>protect_exe_themida.bat</ProtectExeThemidaBatchFilePath>
+	  <ProtectExeXenuineBatchFilePath>protect_exe_xenuine.bat</ProtectExeXenuineBatchFilePath>
+    <CodeSigningBatchFilePath>.\codesign.bat</CodeSigningBatchFilePath>
+    <SignedFileInfoFilePath>.\codesign_info.txt</SignedFileInfoFilePath>
+    <GlobalPublishS3Folder>s3://pubg-dist/$(Branch)_ue5/$(CCNetLabel)$(BuildNamePostfix)</GlobalPublishS3Folder>
+	  <GlobalEditorS3Folder>s3://pubg-dist-editor/$(CCNetLabel)$(BuildNamePostfix)</GlobalEditorS3Folder>
+    <GlobalSigningInfoFolder>s3://pubg-signing/$(Branch)/$(CCNetLabel)$(BuildNamePostfix)</GlobalSigningInfoFolder>
+    <S3SigningFileName>$(CCNetLabel)$(BuildNamePostfix)_signing_info.txt</S3SigningFileName>
+	  <GlobalBakS3Folder>s3://pubg-dist-bak/$(Branch)/$(CCNetLabel)$(BuildNamePostfix)</GlobalBakS3Folder>
+    <GlobalPublishS3Option>--profile &quot;&quot; --region ap-northeast-2</GlobalPublishS3Option>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <ReusedOldVersion></ReusedOldVersion>
+    <GlobalPublishS3OldFolder>s3://pubg-dist/$(Branch)/$(ReusedOldVersion)</GlobalPublishS3OldFolder>
+    <ExcludedOldPaks></ExcludedOldPaks>
+    <SkipCook Condition=" '$(ReusedOldVersion)' != '' And $(ExcludedOldPaks) == '' ">True</SkipCook>
+	<SkipPak Condition=" '$(ReusedOldVersion)' != '' And $(ExcludedOldPaks) == '' ">True</SkipPak>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <MapParam Condition=" '$(PackagingMap)' == 'AllWithTestMaps' Or '$(PackagingMap)' == '' ">-allmaps</MapParam>
+    <MapParam Condition=" '$(PackagingMap)' != 'AllWithTestMaps' And '$(PackagingMap)' != '' ">-map=$(PackagingMap)</MapParam>
+  </PropertyGroup>
+
+  <!-- ############################ BEGIN ANTICHEAT CONFIGURATION ############################ -->
+  <PropertyGroup>
+    <UseAntiCheat>False</UseAntiCheat>
+    <UseSeeding>False</UseSeeding>
+    <UseApplyChanges>False</UseApplyChanges>
+    <UseOLO>False</UseOLO>
+    <UseOLOProfile>False</UseOLOProfile>
+    <UseEncryptedPtr>False</UseEncryptedPtr>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(GlobalPlatform)' == 'Win64' Or '$(GlobalPlatform)' == 'Linux' ">
+    <EnableAntiCheat      Condition=" '$(UseAntiCheat)'      == 'True' "                                                                            >True</EnableAntiCheat>
+    <EnableEncryptedPtr   Condition=" '$(UseEncryptedPtr)'   == 'True' Or  '$(EnableAntiCheat)'      == 'True' "                                    >True</EnableEncryptedPtr>
+    <EnableSeeding        Condition=" '$(UseSeeding)'        == 'True' Or  '$(EnableAntiCheat)'      == 'True' "                                    >True</EnableSeeding>
+    <EnableApplyChanges   Condition=" '$(UseApplyChanges)'   == 'True' And '$(EnableSeeding)'        == 'True' And '$(GlobalConfig)' == 'Shipping' ">True</EnableApplyChanges>
+
+    <!-- experimental -->
+    <EnableOLO            Condition=" '$(UseOLOProfile)'     != 'True' And '$(UseOLO)'               == 'True' "                                    >True</EnableOLO>
+    <EnableOLOProfile     Condition=" '$(UseOLOProfile)'     == 'True' "                                                                            >True</EnableOLOProfile>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <OLOParam          Condition=" '$(EnableOLOProfile)'    == 'True' "> -EnableOLO=profile</OLOParam>
+    <OLOParam          Condition=" '$(EnableOLO)'           == 'True' "> -EnableOLO=obfuscate</OLOParam>
+    <EncryptedPtrParam Condition=" '$(EnableEncryptedPtr)'  == 'True' "> -EnableEncryptedPtr</EncryptedPtrParam>
+    <AllAntiCheatParams>$(OLOParam)$(EncryptedPtrParam)</AllAntiCheatParams>
+  </PropertyGroup>
+  <!-- ############################ END ANTICHEAT CONFIGURATION ############################ -->
+
+
+  <!-- ini 로 부터 특정 Key에 할당된 값을 읽어서 string Result 로 출력한다. 자세한 사용방법은 TestReadIni 를 참조하라. -->
+  <UsingTask TaskName="ReadIniValue" TaskFactory="CodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <IniPath ParameterType="System.String" Required="true" />
+      <Key ParameterType="System.String" Required="true" />
+      <Result ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System"/>
+      <Using Namespace="System.Collections.Generic"/>
+      <Using Namespace="System.IO"/>
+      <Using Namespace="System.Text.RegularExpressions"/>
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        try{
+            var validLinePattern = new Regex(@"^\s*\w");
+            var pattern = new Regex(Key + @"\s*=\s*(\S+)");
+            foreach (var line in File.ReadAllLines(IniPath))
+            {
+                if(!validLinePattern.IsMatch(line))
+                {
+                    continue;
+                }
+                var m = pattern.Match(line);
+                if(!m.Success)
+                {
+                    continue;
+                }
+
+                var value = m.Groups[1].ToString();
+                Result = value;
+            }
+        } catch( Exception ex )
+        {
+          Log.LogError(string.Format("Failed to ReadIniValue: {0}", IniPath));
+        }
+]]>   </Code>
+    </Task>
+  </UsingTask>
+
+  <PropertyGroup>
+    <PackageCompressionArgument>-compressed</PackageCompressionArgument>
+    <PackageCompressionArgument Condition=" '$(GlobalPlatform)' == 'PS4' "></PackageCompressionArgument>
+    <DefaultPackageArgument>-project="$(TslUprojFullPath)" -noP4 -platform=$(GlobalPlatform) -clientconfig=$(GlobalConfig) -serverconfig=$(GlobalConfig) -cook $(IncrementalCookParam) -build -stage -pak $(PackageCompressionArgument) $(ProfileGuidedParam) -archive -OptimizeMaterialShaders -archivedirectory="$(GlobalPackageFolder)"</DefaultPackageArgument>
+    <CookerArgument>-project="$(TslUprojFullPath)" -noP4 -platform=$(GlobalPlatform) -cook $(IncrementalCookParam) -skipstage -skippak</CookerArgument>
+    <RebuildHLODsArgument>-Script="$(EngineFullPath)\Build\Graph\Examples\BuildWorldPartitionHLODs.xml" -set:ProjectName="$(TslUprojFullPath)" -Target=&quot;HLOD Generation&quot; -Branch=//PUBG_2.0/$(Branch) -set:EditorTarget=TslGameEditor -set:MapName=$(PackagingMap) -set:SubmitHLODs=$(SubmitHLOD) -P4 -set:ShelveHLODs=$(ShelveHLOD) -set:ShelveWorkspace=$(P4Workspace) -set:ShelveUser=$(P4UserName)</RebuildHLODsArgument>
+  </PropertyGroup>
+
+  <Target Name="CheckProperty">
+    <Error Text="Wrong GlobalConfig Property: '$(GlobalConfig)' not in '$(GlobalConfigSet)' "
+			Condition=" ! $(GlobalConfigSet.Contains($(GlobalConfig))) " />
+  </Target>
+
+  <Target Name="CheckLabel" DependsOnTargets="">
+    <Error Text="No version for Build (need a CCNetLable in Environment Variable)"
+			Condition=" '$(CCNetLabel)' == '' " />
+  </Target>
+
+  <Target Name="CheckP4Config" DependsOnTargets="">
+    <Error Text="No Correct Perforce Config Provided for HLOD building"
+			Condition=" '$(SubmitHLOD)' == '' OR '$(ShelveHLOD)' == '' OR '$(P4Workspace)' == '' OR '$(P4UserName)' == '' " />
+  </Target>
+
+  <Target Name="SetupDrive">
+    <PropertyGroup>
+      <ParentFolder>$([System.IO.Path]::GetFullPath('..'))</ParentFolder>
+      <SubstDrive>O:</SubstDrive>
+    </PropertyGroup>
+
+    <Message Text="Setup drive: $(SubstDrive)  -> $(ParentFolder)" Importance="high"/>
+    <!-- 
+    관리자 권한이 없으면 체크하고 종료할 수 있는 명령을 먼저 수행한다.
+    -->
+    <Exec Command="Tool\ToolBin\CheckAdmin.exe"  />
+
+    <Exec Command="psubst.bat $(SubstDrive) /d /p"
+          WorkingDirectory="Tool\Bin" IgnoreExitCode="true"
+          />
+    <Exec Command="psubst.bat $(SubstDrive) &quot;$(ParentFolder)&quot; /p"
+          WorkingDirectory="Tool\Bin"
+          />
+  </Target>
+
+  <Target Name="Conf">
+    <Message Text="@@@@@@@@ Conf @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    
+    <Message Importance="High" Text="GLOBAL CONFIGURATION" />
+    <Message Importance="High" Text="  - GlobalConfig         = '$(GlobalConfig)'" />
+    <Message Importance="High" Text="  - GlobalPlatform       = '$(GlobalPlatform)'" />
+    <Message Importance="High" Text="  - ProjectPlatform      = '$(ProjectPlatform)'" />
+    <Message Importance="High" Text="  - Tsl Version          = '$(VersionDigit0).$(VersionDigit1).$(VersionDigit2).$(VersionDigit3)'" />
+    <Message Importance="High" Text="  - ProjectPlatform      = '$(ProjectPlatform)'" />
+    <Message Importance="High" Text="  - Branch               = '$(Branch)'" />
+
+    <Message Importance="High" Text="ANTI-CHEAT CONFIGURATION - $(GlobalPlatform)" />
+    <Message Importance="High" Text="  - UseAntiCheat         = True" Condition = " '$(UseAntiCheat)'       == 'True' " />
+    <Message Importance="High" Text="  - UseEncryptedPtr      = True" Condition = " '$(UseEncryptedPtr)'    == 'True' " />
+    <Message Importance="High" Text="  - UseSeeding           = True" Condition = " '$(UseSeeding)'         == 'True' " />
+    <Message Importance="High" Text="  - UseApplyChanges      = True" Condition = " '$(UseApplyChanges)'    == 'True' " />
+    <Message Importance="High" Text="  - UseOLO               = True" Condition = " '$(UseOLO)'             == 'True' " />
+    <Message Importance="High" Text="  - UseOLOProfile        = True" Condition = " '$(UseOLOProfile)'      == 'True' " />
+
+    <Message Importance="High" Text="  - EnableAntiCheat      = True" Condition = " '$(EnableAntiCheat)'    == 'True' " />
+    <Message Importance="High" Text="  - EnableEncryptedPtr   = True" Condition = " '$(EnableEncryptedPtr)' == 'True' " />
+    <Message Importance="High" Text="  - EnableSeeding        = True" Condition = " '$(EnableSeeding)'      == 'True' " />
+    <Message Importance="High" Text="  - EnableApplyChanges   = True" Condition = " '$(EnableApplyChanges)' == 'True' " />
+    <Message Importance="High" Text="  - EnableOLO            = True" Condition = " '$(EnableOLO)'          == 'True' " />
+    <Message Importance="High" Text="  - EnableOLOProfile     = True" Condition = " '$(EnableOLOProfile)'   == 'True' " />
+    <Message Importance="High" Text="  - UseNameEncryption    = True" Condition = " '$(UseNameEncryption)'  == 'True' " />
+    <Message Importance="High" Text="  - NameSaltPostfix      = '$(VersionDigit0)$(VersionDigit1)'" Condition = " '$(UseNameEncryption)'  == 'True' " />
+
+    <Message Importance="High" Text="  - AllAntiCheatParams   = '$(AllAntiCheatParams)'" />
+
+    <Message Importance="High" Text="  - UseConsoleCommandInShipping = True"            Condition = " '$(UseConsoleCommandInShipping)' == 'True' " />
+    <Message Importance="High" Text="  - UseMemreportInShipping = True"                 Condition = " '$(UseMemreportInShipping)' == 'True' " />
+    <Message Importance="High" Text="REUSED-OLD-VERSION CONFIGURATION"                  Condition = " '$(ReusedOldVersion)' != '' " />
+    <Message Importance="High" Text="  - ReusedOldVersion     = '$(ReusedOldVersion)'"  Condition = " '$(ReusedOldVersion)' != '' " />
+    <Message Importance="High" Text="  - ExcludedOldPaks      = '$(ExcludedOldPaks)'"   Condition = " '$(ExcludedOldPaks)' != '' " />
+
+    <Message Importance="High" Text="  - IsDailyBuild         = '$(IsDailyBuild)'" Condition = " '$(IsDailyBuild)' != '' " />
+    <Message Importance="High" Text="  - UploadProtocolWiki   = '$(UploadProtocolWiki)'" Condition = " '$(UploadProtocolWiki)' != '' " />
+    
+    <Message Importance="High" Text="  - UseUnityBuild        = '$(UseUnityBuild)'" Condition = " '$(UseUnityBuild)' != '' " />
+  </Target>
+
+  <Target Name="SetupUnrealDependency" DependsOnTargets="Conf">
+    <Message Text="@@@@@@@@ SetupUnrealDependency @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <!-- 빌드 서버에서 빌드할 때 사전에 이것만 수행하도록 설정되어 있다. 
+    따라서 여기를 고칠 때는 빌드 서버 환경을 고려해 처리해야 한다. -->
+    <Exec Command="Setup.bat --force"/>
+
+    <!-- 빌드에 사용하는 version 설정을 위한 defines -->
+    <MSBuild.ExtensionPack.Computer.EnvironmentVariable TaskAction="Set" Variable="TSL_MAJOR_VERSION" Value="$(VersionDigit0)"/>
+    <MSBuild.ExtensionPack.Computer.EnvironmentVariable TaskAction="Set" Variable="TSL_MINOR_VERSION" Value="$(VersionDigit1)"/>
+    <MSBuild.ExtensionPack.Computer.EnvironmentVariable TaskAction="Set" Variable="TSL_SUB_VERSION" Value="$(VersionDigit2)"/>
+    <MSBuild.ExtensionPack.Computer.EnvironmentVariable TaskAction="Set" Variable="TSL_PATCH_VERSION" Value="$(VersionDigit3)"/>
+  </Target>
+
+  <Target Name="SetupUnreal" DependsOnTargets="SetupUnrealDependency">
+    <Message Text="@@@@@@@@ SetupUnreal @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="start /wait Engine\Extras\Redist\en-us\UEPrereqSetup_x64.exe /quiet" IgnoreExitCode="true" />
+  </Target>
+
+  <Target Name="Build_AnticheatSeed">
+    <Message Text="@@@@@@@@ ANTICHEAT SEED VERSION @@@@@@@@ : $(VersionDigit0).$(VersionDigit1).$(VersionDigit2).$(VersionDigit3)" Importance="High" />
+    <Exec Command="Powershell.exe -File p4_submodule.ps1 -command checkout_aniticheat_files" />
+    <Exec Command="Powershell.exe -File 3_regenerate_anticheat_seeds.ps1" />
+    <Exec Command="Powershell.exe -File p4_submodule.ps1 -command submit_aniticheat_files" />
+  </Target>
+
+  <Target Name="SetNameSalt">
+    <MSBuild.ExtensionPack.Computer.EnvironmentVariable TaskAction="Set" Variable="NAME_SALT_POSTFIX" Value="$(VersionDigit0)$(VersionDigit1)"/>
+  </Target>
+    
+  <Target Name="BuildTsl_prepare" DependsOnTargets="CheckProperty;SetupUnrealDependency">
+		
+    <CallTarget Targets="Build_AnticheatSeed" Condition=" '$(EnableSeeding)' == 'True' " />
+    <CallTarget Targets="SetNameSalt" Condition=" '$(UseNameEncryption)' == 'True' " />
+    <CallTarget Targets="GenerateProject" />
+    <CallTarget Targets="BuildUnrealAutomationTool" />
+
+	<Exec Command="powershell.exe -File execute_ggp_sdk.ps1" ContinueOnError="WarnAndContinue"/>
+	
+    <!-- BEGIN: Blueprint nativization parameter -->
+    <ReadIniValue IniPath="$(TslFullPath)\Config\DefaultGame.ini" Key="BlueprintNativizationMethod">
+      <Output PropertyName="BlueprintNativizationMethod" TaskParameter="Result" />
+    </ReadIniValue>
+    <!-- 정해진 조건이 만족되면 DefaultPackageArgument 에 -nativizeAssets 을 추가한다. (이게 제대로 적용되려면 DependsOnTargets안에 이 task가 들어 있어야 한다.) -->
+    <CreateProperty Condition=" ('$(BlueprintNativizationMethod)' != '' And '$(BlueprintNativizationMethod)' != 'Disabled') And '$(ForceDisableBPNativization)' != 'True' "
+      Value="True">
+      <Output  TaskParameter="Value" PropertyName="EnableBPNativization" />
+    </CreateProperty>
+    <CreateProperty Condition="$(EnableBPNativization)"
+      Value="$(DefaultPackageArgument) -nativizeAssets ">
+      <Output  TaskParameter="Value" PropertyName="DefaultPackageArgument" />
+    </CreateProperty>
+    <!-- END: Blueprint nativization parameter -->
+
+    <!-- 이 task에서 변경된 모든 중요 property 들을 출력하자 -->
+    <Message Importance="High" Text="RUNTIME CONFIGURATION (decided by ini)" />
+    <Message Importance="High" Text="  - BP Nativization = $(EnableBPNativization)" />
+  </Target>
+
+  <Target Name="SetupTsl" DependsOnTargets="CheckProperty;SetupUnreal;BuildTsl_prepare">
+    <!-- Tsl 프로젝트에서 사용하는 uproj 에 들어있는 engine reference 를 현재 실행 경로 기준으로 새로 만들어줘야 한다. -->
+    <Exec Command="UnrealVersionRegister.exe {E7F2DBBA-412A-4D8D-6BCF-8997E03C7B02} &quot;$(EngineFullPath)&quot;" WorkingDirectory="Tool\ToolBin" />
+  </Target>
+
+  <Target Name="GenerateProject">
+    <Exec Command="Engine\Build\BatchFiles\GenerateProjectFiles.bat -ProjectFile -Game -Engine $(VSVersionParam) &quot;$(TslUprojFullPath)&quot;" />
+  </Target>
+
+  <Target Name="Clean" DependsOnTargets="CheckProperty">
+    <ItemGroup>
+      <CleanFolder Include="Tsl\Intermediate\" />
+      <CleanFolder Include="Engine\Intermediate\" />
+	  <CleanFolder Include="$([System.IO.Directory]::GetDirectories(&quot;Engine\Plugins&quot;, &quot;Binaries&quot;, System.IO.SearchOption.AllDirectories))" />
+      <CleanFolder Include="$([System.IO.Directory]::GetDirectories(&quot;Engine\Plugins&quot;, &quot;Intermediate&quot;, System.IO.SearchOption.AllDirectories))" />
+      <CleanFolder Include="$([System.IO.Directory]::GetDirectories(&quot;Tsl\Plugins&quot;, &quot;Intermediate&quot;, System.IO.SearchOption.AllDirectories))" />
+      <CleanFolder Include="$([System.IO.Directory]::GetDirectories(&quot;Tsl\Plugins\&quot;, &quot;Linux&quot;, System.IO.SearchOption.AllDirectories))" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <CleanFile Include="Engine\Source\Runtime\Core\Public\Misc\NameEncryptionMacros.h"/>
+      <CleanFile Include="Engine\Source\Runtime\Core\Public\Misc\NameEncryptionRedirects.h"/>
+    </ItemGroup>
+
+    <RemoveDir Directories="@(CleanFolder)" ContinueOnError="WarnAndContinue"/>
+    <Delete Files="@(CleanFile)" ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <Target Name="BuildUnrealAutomationTool">
+    <ItemGroup>
+      <BuildToolCsPath Include="Engine\Source\Programs\AutomationToolLauncher\AutomationToolLauncher.csproj">
+        <Properties>Configuration=Development;Platform=AnyCPU</Properties>
+      </BuildToolCsPath>
+      <BuildToolCsPath Include="Engine\Source\Programs\AutomationTool\AutomationTool.csproj">
+        <Properties>Configuration=Development;Platform=AnyCPU;AutomationToolProjectOnly=true</Properties>
+      </BuildToolCsPath>
+    </ItemGroup>
+
+    <MSBuild Projects="@(BuildToolCsPath)" Targets="Restore" />
+	  <MSBuild Projects="@(BuildToolCsPath)" Targets="Build" />
+  </Target>
+
+  <Target Name="Test" DependsOnTargets="CheckProperty">
+    <Message Text="GlobalConfig = $(GlobalConfig)    GlobalPlatform = $(GlobalPlatform)" Importance="high"/>
+    <Message Text="CCNetLabel=$(CCNetLabel)  Digit0=$(VersionDigit0)  Digit1=$(VersionDigit1)  Digit2=$(VersionDigit2)  Digit3=$(VersionDigit3)" Importance="high"/>
+  </Target>
+
+  <Target Name="TestReadIni" DependsOnTargets="">
+    <ReadIniValue IniPath="Tsl\Config\DefaultGame.ini" Key="BlueprintNativizationMethod">
+      <Output PropertyName="BlueprintNativizationMethod" TaskParameter="Result" />
+    </ReadIniValue>
+    <Message Text="BlueprintNativizationMethod=$(BlueprintNativizationMethod)" Importance="high"/>
+  </Target>
+  
+  <Target Name="UploadPackageListAndHashFiles" DependsOnTargets="CheckLabel">
+    <Message Text="@@@@@@@@ UPLOAD PACKAGE LIST AND HASH FILES @@@@@@@@" Importance="High" />
+    <Exec Command="Powershell.exe -File compressed_hash_files.ps1 -Version $(CCNetLabel) -S3Folder $(GlobalPublishS3Folder) -PackageFolder $(PackageFolder)"  />
+  </Target>
+
+  <Target Name="ClearOnBranchChange">
+	  <Message Text="@@@@@@@@ ClearOnBranchChange @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+	  <Message Text="@@@@@@@@ CHECK BUILDBOT @@@@@@@@" />
+	  <Exec Command="p4 user -o" ContinueOnError="WarnAndContinue" ConsoleToMsBuild="true">
+		  <Output TaskParameter="ConsoleOutput" PropertyName="P4UserString" />
+	  </Exec>
+	  <Message Text="@@@@@@@@ BUILDBOT CONFIRMED @@@@@@@@" Condition="$(P4UserString.Contains('buildbot'))" />
+	  <PropertyGroup
+		  Condition="$(P4UserString.Contains('buildbot')) AND '$(BuilderName)' != '' AND '$(BuildNumber)' != '' AND '$(BuildbotURL)' != ''">
+		  <NeedToClearOnBranchChange>True</NeedToClearOnBranchChange>
+	  </PropertyGroup>
+	  <Message Text="@@@@@@@@ CHECK BRANCH CHANGE @@@@@@@@" Condition="'$(NeedToClearOnBranchChange)' == 'True'" />
+	  <Exec
+		  Command="python get_previous_build_branch_name.py $(BuilderName) $(BuildNumber) $(BuildbotURL)"
+		  Condition="'$(NeedToClearOnBranchChange)' == 'True'"
+		  ContinueOnError="WarnAndContinue"
+		  ConsoleToMsBuild="true">
+		  <Output TaskParameter="ConsoleOutput" PropertyName="PrevBuildBranchName" />
+	  </Exec>
+
+	  <PropertyGroup Condition="'$(PrevBuildBranchName)' == '' OR '$(PrevBuildBranchName)' == '$(Branch)'">
+		  <NeedToClearOnBranchChange>False</NeedToClearOnBranchChange>
+	  </PropertyGroup>
+	  
+	  <PropertyGroup Condition="$(BuilderName.ToLower().Contains('jenkins')) == 'True'">
+		  <NeedToClearOnBranchChange>True</NeedToClearOnBranchChange>
+	  </PropertyGroup>
+
+	  <Message Text="@@@@@@@@ CLEAR ON BRANCH CHANGE @@@@@@@@" Condition="'$(NeedToClearOnBranchChange)' == 'True'"
+			   Importance="High" />
+	  <RemoveDir Directories="Tsl\Intermediate\AssetRegistryCache" Condition="'$(NeedToClearOnBranchChange)' == 'True' "
+				 ContinueOnError="WarnAndContinue" />
+	  <Delete Files="Tsl\Intermediate\CachedAssetRegistry.bin" Condition="'$(NeedToClearOnBranchChange)' == 'True' "
+			  ContinueOnError="WarnAndContinue" />
+	  <Message Text="@@@@@@@@ CLEAR CONTENT FOLDER ON BRANCH CHANGE @@@@@@@@"
+			   Condition="'$(NeedToClearOnBranchChange)' == 'True' " Importance="High" />
+	  <Exec Command="p4 reconcile -f -m -a Tsl\Content\Maps\..." Condition="'$(NeedToClearOnBranchChange)' == 'True' "
+			ContinueOnError="WarnAndContinue" />
+	  <Exec Command="p4 revert -w Tsl\Content\Maps\..." Condition="'$(NeedToClearOnBranchChange)' == 'True' "
+			ContinueOnError="WarnAndContinue" />
+  </Target>
+  <Target Name="SaveBuildProperties">
+    <!-- ProjectPackageName 이 정의된 스크립트에서만 호출 -->
+    <PropertyGroup>
+      <OutputDir>$(GlobalPackageFolder)\BuildProps</OutputDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(OutputDir)" Condition="!Exists('$(OutputDir)')" />
+    <ItemGroup>
+      <FilesToDelete Include="$(OutputDir)\*.json" />
+    </ItemGroup>
+    <Delete Files="@(FilesToDelete)" Condition="Exists('$(OutputDir)')" />
+    <WriteLinesToFile
+      File='$(OutputDir)\$(ProjectPackageName).json'
+      Lines='$(BuildProperties)'
+      Overwrite="true"
+      Encoding="Unicode"/>
+  </Target>
+  <Target Name="RemovePackageArgsForReusePaks">
+	<PropertyGroup>
+      <RemoveCookArgument>$(DefaultPackageArgument.Replace(' -cook $(IncrementalCookParam)','-skipcook').Replace(' -OptimizeMaterialShaders',''))</RemoveCookArgument>
+      <RemoveCookPakArgument>$(RemoveCookArgument.Replace(' -pak $(PackageCompressionArgument)',' -skippak'))</RemoveCookPakArgument>
+	  <DefaultPackageArgument Condition=" '$(SkipPak)'=='True' ">$(RemoveCookPakArgument)</DefaultPackageArgument>
+	</PropertyGroup>	
+	<Message Text="ReusePackageArgument	= $(DefaultPackageArgument)" />
+  </Target>
+</Project>
+

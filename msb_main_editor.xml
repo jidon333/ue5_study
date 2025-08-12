@@ -1,0 +1,155 @@
+﻿<!--
+Unreal Editor (UEEditor.exe) 를 빌드해주는 것.
+-->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="msb_env.xml" />
+
+  <PropertyGroup>
+    <ProjectPackageName>WindowsEditor</ProjectPackageName>
+    <ProjectPublishFolder>$(GlobalPublishFolder)\$(ProjectPackageName)</ProjectPublishFolder>
+    <ProjectPublishS3Folder>$(GlobalEditorS3Folder)/$(ProjectPackageName)</ProjectPublishS3Folder>
+    <ProjectPackageFolder>$(GlobalPackageFolder)\$(ProjectPackageName)</ProjectPackageFolder>
+    <UseNameEncryptionParam Condition=" '$(UseNameEncryption)' == 'True' ">-UseNameEncryption</UseNameEncryptionParam>
+  </PropertyGroup>
+
+  <Target Name="Build_Editor" DependsOnTargets="BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ Build_Editor @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="RunUAT.bat BuildGraph -Script=$(EngineFullPath)\Build\Graph\Examples\BuildEditorAndTools.xml -set:UProjectPath=$(TslUprojFullPath) -Target=&quot;Compile TslGameEditor Win64&quot; -Branch=//PUBG_2.0/$(Branch) -set:EditorTarget=TslGameEditor -set:Licensee=false -waitmutex $(VSVersionParam) $(DisableUnityBuild) $(UseNameEncryptionParam)"
+      WorkingDirectory="Engine\Build\BatchFiles" Condition=" '$(EditorBuild)' != 'True' " />
+    <Exec Command="RunUAT.bat BuildGraph -Script=$(EngineFullPath)\Build\Graph\Examples\BuildEditorAndTools.xml -set:UProjectPath=$(TslUprojFullPath) -Target=&quot;Compile Tools Win64&quot; -Branch=//PUBG_2.0/$(Branch) -set:EditorTarget=TslGameEditor -set:Licensee=false -waitmutex $(VSVersionParam) $(DisableUnityBuild) $(UseNameEncryptionParam)"
+      WorkingDirectory="Engine\Build\BatchFiles" Condition=" '$(EditorBuild)' != 'True' " />
+    <Exec Command="RunUAT.bat BuildGraph -Script=$(EngineFullPath)\Build\Graph\Examples\BuildEditorAndTools.xml -set:UProjectPath=$(TslUprojFullPath) -Target=&quot;Submit To Perforce for UGS&quot; -Branch=//PUBG_2.0/$(Branch) -set:EditorTarget=TslGameEditor -set:Licensee=false -set:ArchiveStream=//PUBG_Editor/UGS-Binaries -waitmutex $(VSVersionParam) $(DisableUnityBuild) $(UseNameEncryptionParam) -p4 -submit"
+      WorkingDirectory="Engine\Build\BatchFiles" Condition=" '$(EditorBuild)' == 'True' " />
+  </Target>
+
+  <Target Name="Rebuild_Editor" DependsOnTargets="BuildTsl_prepare" >
+    <Message Text="@@@@@@@@ Build_Editor @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="RunUAT.bat BuildGraph -Script=$(EngineFullPath)\Build\Graph\Examples\BuildEditorAndTools.xml -set:UProjectPath=$(TslUprojFullPath) -Target=&quot;Compile TslGameEditor Win64&quot; -Branch=//PUBG_2.0/$(Branch) -set:EditorTarget=TslGameEditor -set:Licensee=false -waitmutex $(VSVersionParam) $(DisableUnityBuild) $(UseNameEncryptionParam) -Clean"
+      WorkingDirectory="Engine\Build\BatchFiles" Condition=" '$(EditorBuild)' != 'True' " />
+    <Exec Command="RunUAT.bat BuildGraph -Script=$(EngineFullPath)\Build\Graph\Examples\BuildEditorAndTools.xml -set:UProjectPath=$(TslUprojFullPath) -Target=&quot;Compile Tools Win64&quot; -Branch=//PUBG_2.0/$(Branch) -set:EditorTarget=TslGameEditor -set:Licensee=false -waitmutex $(VSVersionParam) $(DisableUnityBuild) $(UseNameEncryptionParam) -Clean"
+      WorkingDirectory="Engine\Build\BatchFiles" Condition=" '$(EditorBuild)' != 'True' " />
+    <Exec Command="RunUAT.bat BuildGraph -Script=$(EngineFullPath)\Build\Graph\Examples\BuildEditorAndTools.xml -set:UProjectPath=$(TslUprojFullPath) -Target=&quot;Submit To Perforce for UGS&quot; -Branch=//PUBG_2.0/$(Branch) -set:EditorTarget=TslGameEditor -set:Licensee=false -set:ArchiveStream=//PUBG_Editor/UGS-Binaries -waitmutex $(VSVersionParam) $(DisableUnityBuild) $(UseNameEncryptionParam) -Clean -p4 -submit"
+      WorkingDirectory="Engine\Build\BatchFiles" Condition=" '$(EditorBuild)' == 'True' " />
+  </Target>
+  
+  <Target Name="Cook_Editor" DependsOnTargets="Build_Editor" >
+
+    <CallTarget Targets="ClearOnBranchChange"/>
+	
+	<Exec
+		Command="msbuild_run.bat msb_main_editor.xml /p:GlobalConfig=Development /t:Build_Editor"
+	/>
+		
+	<Exec
+      Command="RunUAT.bat BuildCookRun $(CookerArgument) -UTF8Output -allmaps $(VSVersionParam) $(UseNameEncryptionParam)"
+      WorkingDirectory="Engine\Build\BatchFiles"
+      />
+  </Target>
+  
+  <Target Name="UnrealPackage_Editor" DependsOnTargets="Build_Editor" >
+    <Message Text="@@@@@@@@ UnrealPackage_Editor @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <ItemGroup>
+      <PkgCopyItem Include="Tsl\$(TslUprojectName)">
+        <To>$(ProjectPackageFolder)\TslGame\</To>
+      </PkgCopyItem>
+
+      <PkgCopyItem Include="Engine\Binaries\**\*.*" 
+          Exclude="Engine\Binaries\**\*.pdb;Engine\Binaries\**\*.lib;Engine\Binaries\**\*.so">
+        <To>$(ProjectPackageFolder)\Engine\Binaries</To>
+      </PkgCopyItem>
+      <PkgCopyItem Include="Engine\Build\Build.version">
+        <To>$(ProjectPackageFolder)\Engine\Build</To>
+      </PkgCopyItem>
+      <PkgCopyItem Include="Engine\Config\**\*.*">
+        <To>$(ProjectPackageFolder)\Engine\Config</To>
+      </PkgCopyItem>
+      <PkgCopyItem Include="Engine\Content\**\*.*" 
+          Exclude="Engine\Content\**\*.fbx">
+        <To>$(ProjectPackageFolder)\Engine\Content</To>
+      </PkgCopyItem>
+      <PkgCopyItem Include="Engine\Plugins\**\*.*" 
+          Exclude="Engine\Plugins\**\*.pdb;Engine\Plugins\**\*.lib;Engine\Plugins\**\*.a;Engine\Plugins\**\*.so;Engine\Plugins\**\*.obj;Engine\Plugins\Runtime\Coherent\CoherentUIGTPlugin\Resources\debugger\MacOSX\**\*">
+        <To>$(ProjectPackageFolder)\Engine\Plugins</To>
+      </PkgCopyItem>
+      <PkgCopyItem Include="Engine\Shaders\**\*.*">
+        <To>$(ProjectPackageFolder)\Engine\Shaders</To>
+      </PkgCopyItem>
+
+      <PkgCopyItem Include="Tsl\Binaries\**\*.dll;Tsl\Binaries\**\*.modules">
+        <To>$(ProjectPackageFolder)\TslGame\Binaries</To>
+      </PkgCopyItem>
+      <PkgCopyItem Include="Tsl\Config\**\*.*">
+        <To>$(ProjectPackageFolder)\TslGame\Config</To>
+      </PkgCopyItem>
+      <PkgCopyItem Include="Tsl\Content\**\*.*" 
+          Exclude="Tsl\Content\**\*.fbx;Tsl\Content\**\*.tga">
+        <To>$(ProjectPackageFolder)\TslGame\Content</To>
+      </PkgCopyItem>
+      <PkgCopyItem Include="Tsl\Plugins\**\*.*"
+          Exclude="Tsl\Plugins\**\*.pdb;Tsl\Plugins\**\*.lib;Tsl\Plugins\**\*.a;Tsl\Plugins\**\*.so;Tsl\Plugins\**\*.obj">
+        <To>$(ProjectPackageFolder)\TslGame\Plugins</To>
+      </PkgCopyItem>
+      <PkgCopyItem Include="Tsl\Wwise\**\*.*">
+        <To>$(ProjectPackageFolder)\TslGame\Wwise</To>
+      </PkgCopyItem>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(PkgCopyItem)"
+        DestinationFolder="%(To)\%(RecursiveDir)"
+        UseHardlinksIfPossible="True"/>
+
+    <MSBuild.ExtensionPack.FileSystem.File TaskAction="Replace" RegexPattern='"EngineAssociation.*,' Replacement="" Files="$(ProjectPackageFolder)\TslGame\$(TslUprojectName)"/>
+  </Target>
+
+  <Target Name="Package_Editor" DependsOnTargets="CheckProperty" >
+    <CallTarget Targets="CleanPackage_Editor;UnrealPackage_Editor"/>
+  </Target>
+
+  <Target Name="CleanPackage_Editor" DependsOnTargets="CheckProperty" >
+    <Message Text="@@@@@@@@ CleanPackage_Editor @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <ItemGroup>
+      <PackageFolder Include="$(ProjectPackageFolder)" />
+    </ItemGroup>
+    <RemoveDir Directories="@(PackageFolder)" ContinueOnError="WarnAndContinue" />
+  </Target>
+
+  <Target Name="CleanPublish_Editor" DependsOnTargets="CheckLabel">
+    <Message Text="@@@@@@@@ CleanPublish_Editor @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <RemoveDir Directories="$(ProjectPublishFolder)"  ContinueOnError="WarnAndContinue"/>
+    <MakeDir Directories="$(ProjectPublishFolder)"/>
+  </Target>
+
+  <Target Name="PublishCopy_Editor" DependsOnTargets="CheckLabel;CleanPublish_Editor">
+    <Message Text="@@@@@@@@ PublishCopy_Editor @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+
+    <ItemGroup>
+      <CopyItem Include="$(ProjectPackageFolder)\**\*.*" >
+        <To>$(ProjectPublishFolder)</To>
+      </CopyItem>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(CopyItem)"
+      DestinationFolder="%(To)\%(RecursiveDir)"
+      SkipUnchangedFiles="True"
+      UseHardlinksIfPossible="True"
+      />
+  </Target>
+
+  <Target Name="CleanPublishS3_Editor" DependsOnTargets="CheckLabel">
+    <Message Text="@@@@@@@@ CleanPublishS3_Editor @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="aws s3 rm $(ProjectPublishS3Folder)/ $(GlobalPublishS3Option) --recursive" />
+  </Target>
+
+  <Target Name="PublishCopyS3_Editor" DependsOnTargets="CheckLabel;CleanPublishS3_Editor">
+    <Message Text="@@@@@@@@ PublishCopyS3_Editor @@@@@@@@ : $([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss'))" Importance="High" />
+    <Exec Command="aws s3 cp $(ProjectPackageFolder) $(ProjectPublishS3Folder)/ $(GlobalPublishS3Option) --no-progress --recursive --exclude *.pdb --exclude TslGame/Saved* $(AdditionalExcludeArgs)" />
+  </Target>
+
+  <Target Name="PublishS3_Editor" DependsOnTargets="CheckLabel">
+    <CallTarget Targets="CleanPackage_Editor;Package_Editor"/>
+    <CallTarget Targets="PublishCopyS3_Editor"/>
+  </Target>
+
+</Project>
+
